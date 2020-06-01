@@ -1,0 +1,45 @@
+{
+  "name": "DF的哔哩哔哩弹幕拓展",
+  "version": "1.2",
+  "description": "该拓展程序致力于改善哔哩哔哩的弹幕体验XD",
+  "permissions": [
+    "*://*.bilibili.com/*",
+    "webRequest",
+    "webRequestBlocking",
+    "notifications",
+    "storage",
+    "contextMenus",
+    "clipboardRead"
+  ],
+  "optional_permissions": [
+    "ws://*.bilibili.com/*",
+    "wss://*.bilibili.com/*"
+  ],
+  "content_security_policy": "default-src 'self'; frame-src ; img-src data: ; object-src 'self'; connect-src http://39.102.56.130:400  http://*.bilibili.com https://*.bilibili.com https://api.dmooji.com ws://localhost:56789 data:; style-src 'self' 'unsafe-inline'",
+  "background": {
+    "page": "background.html"
+  },
+
+  "browser_action":
+  {
+    "default_title": "这是一个示例Chrome插件",
+    "default_popup": "html/popup.html"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.bilibili.com/*"
+      ],
+      "js": [
+        "script_injector.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    "xhr_hook.js"
+  ],
+  "manifest_version": 2
+}

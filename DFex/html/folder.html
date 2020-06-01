@@ -1,0 +1,21 @@
+<html>
+<head>
+    <base href="file:///E:/data/bilibiliLib/archiveLib/复仇者联盟/av80665 复仇者联盟17/p1 av80665"/>
+    <script>
+        window.onload = function(){
+            var iframe = document.createElement('iframe');
+            iframe.id = 'iframe';
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            iframe.src = 'mytext.txt';
+            setTimeout(function(){
+                var text = document.getElementById('iframe').contentDocument.body.firstChild.innerHTML;
+                alert(text);
+            }, 1000);
+        }
+    </script>
+</head>
+<body>
+<h1>Hello World!</h1>
+</body>
+</html>
