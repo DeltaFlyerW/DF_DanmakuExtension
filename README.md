@@ -1,0 +1,2 @@
+# DF_DanmakuExtension
+这是一个致力于改善哔哩哔哩的弹幕体验的拓展程序XD
