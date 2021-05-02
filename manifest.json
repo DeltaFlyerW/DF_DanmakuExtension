@@ -1,7 +1,8 @@
 {
   "name": "DF的哔哩哔哩弹幕拓展",
-  "version": "1.3.2",
+  "version": "1.6.0",
   "description": "该拓展程序致力于改善哔哩哔哩的弹幕体验XD",
+  "author": "DeltaFlyer",
   "permissions": [
     "*://*.bilibili.com/*",
     "webRequest",
@@ -9,19 +10,16 @@
     "notifications",
     "storage",
     "contextMenus",
-    "clipboardRead",
-    "tabs",
-    "activeTab"
+    "clipboardRead"
   ],
   "optional_permissions": [
     "ws://*.bilibili.com/*",
     "wss://*.bilibili.com/*"
   ],
-  "content_security_policy": "default-src 'self'; frame-src ; img-src data: ; object-src 'self'; connect-src http://39.102.56.130:400  http://*.bilibili.com https://*.bilibili.com https://api.dmooji.com ws://localhost:56789 data:; style-src 'self' 'unsafe-inline'",
+  "content_security_policy": "default-src 'self'; frame-src ; img-src data: ; object-src 'self'; connect-src http://39.102.56.130:400  http://*.bilibili.com https://*.bilibili.com https://api.dmooji.tv ws://localhost:56789 data:; style-src 'self' 'unsafe-inline'",
   "background": {
     "page": "background.html"
   },
-
   "content_scripts": [
     {
       "matches": [
