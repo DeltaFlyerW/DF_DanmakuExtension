@@ -280,9 +280,9 @@ if (document.head) {
                                 if (skipCid !== cid) {
                                     let ondanmu = document.querySelector('span[class="bilibili-player-video-info-danmaku-number"]')
                                     if (Number(ondanmu.textContent) > resp.ndanmu) {
-                                        console.log('Abort Redirect due to less danmu for cid', cid)
-                                        skipCid = cid
-                                        resp.data = null
+                                        // console.log('Abort Redirect due to less danmu for cid', cid)
+                                        // skipCid = cid
+                                        // resp.data = null
                                     } else {
                                         ondanmu.textContent = resp.ndanmu.toString()
 
@@ -316,6 +316,8 @@ if (document.head) {
         false
     );
     var script = document.createElement("script");
+    script.src = chrome.runtime.getURL("https://unpkg.com/ajax-hook@2.0.3/dist/ajaxhook.min.js");
+    script = document.createElement("script");
     script.src = chrome.runtime.getURL("xhr_hook.js");
 
     document.head.appendChild(script);

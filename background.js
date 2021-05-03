@@ -1310,8 +1310,11 @@ let DANMU_URL_FILTER = ['*://comment.bilibili.com/*', '*://api.bilibili.com/x/v1
 var proto_seg = protobuf.roots.default.bilibili.community.service.dm.v1.DmSegMobileReply;
 var LOG_PROTO = false;
 
-function ldanmu_to_proto_seg(ldanmu, segIndex) {
+async function ldanmu_to_proto_seg(ldanmu, segIndex, cid) {
     let res = [];
+    // ldanmu = mergeDanmu(ldanmu,
+    //     await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
+    //         + cid + '&segment_index=' + segIndex))
     for (sdanmu of ldanmu) {
         if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
             res.push(sdanmu)
@@ -1369,15 +1372,16 @@ function mergeDanmu(oldanmu, nldanmu) {
     if (oldanmu.idPool === undefined) {
         let idPool = new Set()
         for (let danmu of oldanmu) {
-            idPool.add(danmu.id)
+            idPool.add(danmu.progress * danmu.ctime)
         }
         oldanmu.idPool = idPool
     }
     for (let danmu of nldanmu) {
-        if (!oldanmu.idPool.has(danmu.id)) {
-            if (window.crcFilter !== null && window.crcFilter(danmu.midHash)) {
+        let ida = danmu.progress * danmu.ctime
+        if (!oldanmu.idPool.has(ida)) {
+            if (!window.crcFilter || window.crcFilter(danmu.midHash)) {
                 oldanmu.push(danmu)
-                oldanmu.idPool.add(danmu.id)
+                oldanmu.idPool.add(ida)
             }
         }
     }
@@ -1504,7 +1508,7 @@ function xml2danmu(sdanmu) {
             idStr: argv[7],
             midHash: argv[6],
             mode: Number(argv[1]),
-            progress: Number(argv[0]) * 1000,
+            progress: Math.round(Number(argv[0]) * 1000),
             weight: 3
         }
     }
@@ -1732,7 +1736,7 @@ function inject_panel(tabid) {
 function crcFilter() {
     'use strict';
     if (window.setting.uidFilter == null) {
-        return
+        return null
     }
     console.log('createTable')
     let crctable = new Uint32Array(window.setting.uidFilter)
@@ -2426,7 +2430,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     if (segindex === 1) {
                         console.log('total ndanmu:' + ldanmu.length)
                     }
-                    res = ldanmu_to_proto_seg(ldanmu, segindex)
+                    res = await ldanmu_to_proto_seg(ldanmu, segindex, cid)
                     console.log('cid:', cid, 'segindex:', segindex, 'length', res[1])
                     res = res[0]
                 }
