@@ -1,71 +1,60 @@
-test = true
+let test = true
+let version = '1.7'
 
 function loadConfig() {
-    console.log(localStorage)
-    window.danmuRate = Number(localStorage['danmuRate']);
-    window.getNicoDanmu = localStorage['getNicoDanmu'];
-    if (localStorage['dbindCid'] !== '{}') {
-        window.dbindCid = JSON.parse(localStorage['dbindCid'])
-    } else {
-        window.dbindCid = {
-            43955542: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av637987 【7月】有顶天家族 01",
-            43955588: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av649592 【7月】有顶天家族 02",
-            43955629: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av661723 【7月】有顶天家族 03",
-            43955665: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av674698 【7月】有顶天家族 04",
-            43955713: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av688716 【7月】有顶天家族 05",
-            43955735: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av702809 【7月】有顶天家族 06",
-            43955747: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av717380 【7月】有顶天家族 07",
-            43955771: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av731634 【7月】有顶天家族 08",
-            43955793: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av743836 【7月】有顶天家族 09",
-            43955844: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av752788 【7月】有顶天家族 10",
-            43955860: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av760866 【7月】有顶天家族 11",
-            43955872: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av769112 【7月】有顶天家族 12",
-            43955889: "E:\\data\\bilibiliLib\\archiveLib\\有顶天家族\\av776390 【7月】有顶天家族 13【完结】"
+    // console.log(localStorage)
+    window.setting = {};
+    if (!test) {
+        try {
+            window.setting = JSON.parse(localStorage['setting'])
+            for (key of Object.keys(window.setting)) {
+                if (defaultConfig[key] === undefined) {
+                    delete window.setting[key]
+                }
+            }
+            for (key of Object.keys(defaultConfig)) {
+                if (window.setting[key] === undefined) {
+                    window.setting[key] = defaultConfig[key]
+                }
+            }
+            saveConfig();
+        } catch (e) {
+            console.log(e)
+            initConfig()
+            saveConfig();
         }
-        console.log(window.dbindCid)
-    }
-    window.lastcid = 0;
+    } else initConfig()
+    // console.log(defaultConfig)
     window.ldldanmu = [];
-
-    // window.filterRule = JSON.parse(localStorage['filterRule'])
+    console.log(window.setting)
 }
 
 function saveConfig() {
-    localStorage['danmuRate'] = Number(window.danmuRate);
-    localStorage['getNicoDanmu'] = window.getNicoDanmu;
-
-    localStorage['filterRule'] = JSON.stringify(window.filterRule);
-    localStorage['dbindCid'] = JSON.stringify(window.dbindCid);
+    localStorage['setting'] = JSON.stringify(window.setting)
 }
 
-function getdate(date) {
-    month = Number(date.getMonth()) + 1;
-    if (month < 10) {
-        month = '0' + month.toString()
-    } else {
-        month = month.toString()
-    }
-    if (Number(date.getDate()) < 10) {
-        sdate = '0' + date.getDate()
-    } else {
-        sdate = date.getDate()
-    }
-    return [date.getFullYear(), month, sdate].join('-')
+let defaultConfig = {
+    generalSwitch: true,
+    danmuRate: 3.1,
+    getNicoDanmu: true,
+    bindedCid: {},
+    uidFilter: null,
+    filterRule: [],
+    version: '1.7'
 }
 
-chrome.runtime.onInstalled.addListener(function (details) {
-    localStorage['danmuRate'] = '4'
-    localStorage['getNicoDanmu'] = '1'
-    localStorage['dbindCid'] = '{}'
-},);
+function initConfig() {
+    window.setting = defaultConfig
+}
+
 
 loadConfig();
 
-var TRAD_DANMU_URL_RE = /(.+):\/\/comment\.bilibili\.com\/(?:rc\/)?(?:dmroll,[\d\-]+,)?(\d+)(?:\.xml)?(\?debug)?$/;
-var NEW_DANMU_NORMAL_URL_RE = /(.+):\/\/api\.bilibili\.com\/x\/v1\/dm\/list\.so\?oid=(\d+)(\&debug)?$/;
-var PROTO_DANMU_SEG_URL_RE = /(.+):\/\/api\.bilibili\.com\/x\/v2\/dm\/web\/seg\.so\?.*?oid=(\d+).*?(\&debug)?$/;
-var NEW_DANMU_HISTORY_URL_RE = /(.+):\/\/api\.bilibili\.com\/x\/v2\/dm\/history\?type=\d+&oid=(\d+)&date=[\d\-]+(\&debug)?$/;
-var DANMU_URL_FILTER = ['*://comment.bilibili.com/*', '*://api.bilibili.com/x/v1/dm/*', '*://api.bilibili.com/x/v2/dm/*']
+let TRAD_DANMU_URL_RE = /(.+):\/\/comment\.bilibili\.com\/(?:rc\/)?(?:dmroll,[\d\-]+,)?(\d+)(?:\.xml)?(\?debug)?$/;
+let NEW_DANMU_NORMAL_URL_RE = /(.+):\/\/api\.bilibili\.com\/x\/v1\/dm\/list\.so\?oid=(\d+)(\&debug)?$/;
+let PROTO_DANMU_SEG_URL_RE = /(.+):\/\/api\.bilibili\.com\/x\/v2\/dm\/web\/seg\.so\?.*?oid=(\d+).*?(\&debug)?$/;
+let NEW_DANMU_HISTORY_URL_RE = /(.+):\/\/api\.bilibili\.com\/x\/v2\/dm\/history\?type=\d+&oid=(\d+)&date=[\d\-]+(\&debug)?$/;
+let DANMU_URL_FILTER = ['*://comment.bilibili.com/*', '*://api.bilibili.com/x/v1/dm/*', '*://api.bilibili.com/x/v2/dm/*']
 
 !function (b) {
     "use strict";
@@ -1072,6 +1061,7 @@ var DANMU_URL_FILTER = ['*://comment.bilibili.com/*', '*://api.bilibili.com/x/v1
                                 if (!writer) writer = $Writer.create();
                                 if (message.elems != null && message.elems.length) for (var i = 0; i < message.elems.length; ++i) $root.bilibili.community.service.dm.v1.DanmakuElem.encode(message.elems[i], writer.uint32(10).fork()).ldelim();
                                 return writer
+
                             };
                             DmSegMobileReply.encodeDelimited = function encodeDelimited(message, writer) {
                                 return this.encode(message, writer).ldelim()
@@ -1320,38 +1310,23 @@ var DANMU_URL_FILTER = ['*://comment.bilibili.com/*', '*://api.bilibili.com/x/v1
 var proto_seg = protobuf.roots.default.bilibili.community.service.dm.v1.DmSegMobileReply;
 var LOG_PROTO = false;
 
-function ldanmu_to_proto_seg(ldanmu, segIndex) {
-    console.log("protobuf: converting xml to seg");
-    var res = [];
+async function ldanmu_to_proto_seg(ldanmu, segIndex, cid) {
+    let res = [];
+    // ldanmu = mergeDanmu(ldanmu,
+    //     await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
+    //         + cid + '&segment_index=' + segIndex))
     for (sdanmu of ldanmu) {
-        attr = sdanmu.substring(1).split(',')
-        progress = Math.floor(parseFloat(attr[0]) * 1e3)
-        if (progress < segIndex * 600000 && progress > (segIndex - 1) * 600000) {
-            pos = attr[7].indexOf('"')
-            idStr = attr[7].substring(0, pos)
-
-            res.push({
-                id: parseInt(idStr),
-                progress: progress,
-                mode: parseInt(attr[1]),
-                fontsize: parseInt(parseInt(attr[2])),
-                color: parseInt(attr[3]),
-                midHash: attr[6],
-                content: attr[7].substring(pos + 2),
-                ctime: parseInt(attr[4]),
-                weight: 10,
-                idStr: idStr
-            })
+        if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
+            res.push(sdanmu)
         }
-
     }
-    var res_uint8arr = proto_seg.encode(proto_seg.create({elems: res})).finish();
+    let res_uint8arr = proto_seg.encode(proto_seg.create({elems: res})).finish();
     if (LOG_PROTO) console.log("verbose proto:", dom, res, res_uint8arr);
-    return res_uint8arr
+    return [res_uint8arr, res.length, res]
 }
 
 function parse_danmu_url(url) {
-    // var protocol=ret[1], cid=ret[2], debug=ret[3], type=ret[4];
+    // let protocol=ret[1], cid=ret[2], debug=ret[3], type=ret[4];
     function addtype(type, res) {
         return res ? res.concat(type) : res;
     }
@@ -1366,39 +1341,102 @@ function parse_danmu_url(url) {
     else if (url.indexOf('/history?') !== -1)
         return addtype('history', NEW_DANMU_HISTORY_URL_RE.exec(url));
     else if (url.indexOf('/seg.so') !== -1) {
-        var res = PROTO_DANMU_SEG_URL_RE.exec(url);
-        segindex = /(segment_index=\d*)/.exec(url)[0]
+        let res = PROTO_DANMU_SEG_URL_RE.exec(url);
+        let segindex = /(segment_index=\d*)/.exec(url)[0]
         return addtype(segindex, res);
     } else
         return null;
 }
 
 function genxml(ldanmu, ndanmu, cid) {
-    head = '<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><chatid>' + cid.toString() + '</chatid><mission>0</mission><maxlimit>' + ndanmu.toString() + '</maxlimit><state>0</state><real_name>0</real_name><source>DF</source><d p=';
+    let head = '<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><chatid>' + cid.toString() + '</chatid><mission>0</mission><maxlimit>' + ndanmu.toString() + '</maxlimit><state>0</state><real_name>0</real_name><source>DF</source><d p=';
     return head + ldanmu.join('</d><d p=') + '</d></i>'
 }
 
-function unique(arr) {
-    var result = [], isRepeated;
-    for (var i = 0, len1 = arr.length; i < len1; i++) {
-        isRepeated = false;
-        for (var j = 0, len2 = result.length; j < len2; j++) {
-            if (arr[i] === result[j]) {
-                isRepeated = true;
-                break;
+function mergeDanmu(oldanmu, nldanmu) {
+    // let result = oldanmu, isRepeated;
+    // for (let i = 0, len1 = nldanmu.length; i < len1; i++) {
+    //     isRepeated = false;
+    //
+    //     for (let j = 0, len2 = oldanmu.length; j < len2; j++) {
+    //         if (nldanmu[i].id === oldanmu[j].id) {// && nldanmu[i].content === oldanmu[j].content) {
+    //             isRepeated = true;
+    //             break
+    //         }
+    //     }
+    //     if (!isRepeated) {
+    //         result.push(nldanmu[i]);
+    //     }
+    // }
+    // return result
+    if (oldanmu.idPool === undefined) {
+        let idPool = new Set()
+        for (let danmu of oldanmu) {
+            idPool.add(danmu.progress * danmu.ctime)
+        }
+        oldanmu.idPool = idPool
+    }
+    for (let danmu of nldanmu) {
+        let ida = danmu.progress * danmu.ctime
+        if (!oldanmu.idPool.has(ida)) {
+            if (!window.crcFilter || window.crcFilter(danmu.midHash)) {
+                oldanmu.push(danmu)
+                oldanmu.idPool.add(ida)
             }
         }
-        if (!isRepeated) {
-            result.push(arr[i]);
+    }
+    return oldanmu
+}
+
+function mergeSortedDanmu(oldanmu, nldanmu) {
+    let lastTs = oldanmu[-1].ctime;
+    let lastDanmuIdPool = []
+
+    for (let idanmu = 0; idanmu < oldanmu.length; idanmu += 1) {
+        let danmu = oldanmu[oldanmu.length - 1 - idanmu]
+        if (danmu.ctime === lastTs) {
+            lastDanmuIdPool.push(danmu.id)
         }
     }
-    return result;
+    let pos = null
+    for (let idanmu = 0; idanmu < nldanmu.length; idanmu += 1) {
+        let danmu = nldanmu[idanmu]
+        if (lastTs > danmu.ctime) {
+            pos = idanmu
+            break
+        }
+        if (lastTs === danmu.ctime) {
+            if (lastDanmuIdPool.indexOf(danmu.id) === -1) {
+                oldanmu.push(danmu)
+            }
+        }
+    }
+    if (pos !== null) {
+        oldanmu = oldanmu.concat(nldanmu.slice(pos))
+    }
+
+    return oldanmu
+
 }
 
 
+function getdate(date) {
+    let month = Number(date.getMonth()) + 1;
+    if (month < 10) {
+        month = '0' + month
+    }
+    let sdate
+    if (Number(date.getDate()) < 10) {
+        sdate = '0' + date.getDate()
+    } else {
+        sdate = date.getDate()
+    }
+    return [date.getFullYear(), month, sdate].join('-')
+}
+
 function getDanmuDate(danmu) {
-    i = 4;
-    pos = 0;
+    let i = 4;
+    let pos = 0;
     while (i > 0) {
         pos = danmu.indexOf(',', pos + 1);
         i -= 1;
@@ -1409,6 +1447,11 @@ function getDanmuDate(danmu) {
 function getDanmuPos(danmu) {
     return Number(danmu.substring(1, danmu.indexOf(',')))
 
+}
+
+function getDanmuUserhash(danmu) {
+    let pos = danmu.lastIndexOf(',')
+    return danmu.slice(danmu.lastIndexOf(',', pos - 1) + 1, pos)
 }
 
 function getDanmuContent(danmu) {
@@ -1425,288 +1468,578 @@ function htmlEscape(text) {
             case "&":
                 return "&amp;";
             case "\"":
-                return "&quot;";
+                return '"';
         }
     });
 }
 
+
+function xmlunEscape(content) {
+    return content.replace('；', ';')
+        .replace('&lt;', '<')
+        .replace('&gt;', '>')
+        .replace('&amp;', '&')
+        .replace('&apos;', "'")
+        .replace('&quot;', '"')
+}
+
 function xml2danmu(sdanmu) {
-    ldanmu = sdanmu.split('</d><d p=');
-    tdanmu = ldanmu[0];
+    let ldanmu = sdanmu.split('</d><d p=');
+
+    if (ldanmu.length === 1) {
+        return []
+    }
+    let tdanmu = ldanmu[0];
     ldanmu[0] = tdanmu.slice(tdanmu.indexOf('<d p=') + 5, tdanmu.length);
     tdanmu = ldanmu[ldanmu.length - 1];
     ldanmu[ldanmu.length - 1] = tdanmu.slice(0, tdanmu.length - 8);
+    for (let i = 0; i < ldanmu.length; i++) {
+        let danmu = ldanmu[i]
+        let argv = danmu.substring(1, danmu.indexOf('"', 2)).split(',')
+        if (argv[6].length > 8) {
+            argv[6] = 'niconico'
+        }
+        ldanmu[i] = {
+            color: Number(argv[3]),
+            content: xmlunEscape(danmu.slice(danmu.indexOf('>') + 1, danmu.length)),
+            ctime: Number(argv[4]),
+            fontsize: Number(argv[2]),
+            id: Number(argv[7]),
+            idStr: argv[7],
+            midHash: argv[6],
+            mode: Number(argv[1]),
+            progress: Math.round(Number(argv[0]) * 1000),
+            weight: 3
+        }
+    }
     return ldanmu
-
 }
 
-function moreHistory(cid) {
-    date = new Date();
-    if (test || cid !== window.lastcid) {
-        window.lastcid = cid
-    } else {
-        return window.lastsdanmu
+function getMinDate(ldanmu) {
+    let minDate = ldanmu[0].ctime
+    for (let danmu of ldanmu) {
+        if (minDate > danmu.ctime) {
+            minDate = danmu.ctime
+        }
     }
+
+    return minDate
+}
+
+
+async function moreFiltedHistory(cid, duration) {
+    let date = new Date();
+    date.setTime(date.getTime() - 86400000)
     console.log('GetDanmuFor CID' + cid)
-    aldanmu = [];
-    tdanmurate = window.danmuRate;
-    firstdate = 0;
+    let aldanmu = [], lfiltedDanmu = [], ldanmu = []
+    let firstdate = 0;
+    let ndanmu, ondanmu
+    let url = 'https://comment.bilibili.com/' + cid + '.xml'
+    let sdanmu = null
+    while (sdanmu == null) {
+        sdanmu = await xhrGet(url)
+    }
+    ondanmu = ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
+    if (ndanmu === 8000) {
+        ndanmu = parseInt((duration / 24 / 60) * 3000)
+    }
+
+    ldanmu = xml2danmu(sdanmu)
+
+    if (ldanmu.length < ondanmu * 0.9) {
+        return [ldanmu, ndanmu]
+    }
     while (true) {
-        const xhr = new XMLHttpRequest();
-        url = "https://api.bilibili.com/x/v2/dm/history?type=1&date=" + getdate(date) + "&oid=" + cid.toString();
-        console.log(url);
-        xhr.open("get", url, false);
-        xhr.send();
-        if (xhr.readyState === 4 && xhr.status === 200) {
-            sdanmu = xhr.responseText;
-            ldanmu = xml2danmu(sdanmu)
-            regndanmu = new RegExp('<maxlimit>(.*?)</maxlimit>');
-            ndanmu = regndanmu.exec(sdanmu)[1];
-            aldanmu = aldanmu.concat(ldanmu);
-            if (ldanmu.length < Number(ndanmu) - 50) break;
-            tfirstdate = getDanmuDate(tdanmu);
+        let sdanmu
+        if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
+            let url = "https://api.bilibili.com/x/v2/dm/web/history/seg.so?type=1&date="
+                + getdate(date) + "&oid=" + cid.toString();
+            console.log('ndanmu:', aldanmu.length, '/', lfiltedDanmu.length, getdate(date), url);
+            sdanmu = loadProtoDanmu(url)
+        }
+        aldanmu = mergeDanmu(aldanmu, ldanmu)
+        lfiltedDanmu = mergeDanmu(lfiltedDanmu, await danmuFilter(ldanmu))
+        if (ldanmu.length < Math.min(ondanmu, 5000) * 0.9) {
+            if (aldanmu.length < ndanmu * setting.danmuRate) {
+
+                return [aldanmu, ondanmu]
+            } else {
+
+                return [lfiltedDanmu, ondanmu]
+            }
+        }
+        if (lfiltedDanmu.length > ndanmu * setting.danmuRate) {
+
+            return [lfiltedDanmu, ondanmu]
+        }
+        ldanmu = await sdanmu
+        if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
+            let tfirstdate = getMinDate(ldanmu)
             if (firstdate !== 0 && firstdate - tfirstdate < 86400)
                 tfirstdate = firstdate - 86400;
             firstdate = tfirstdate;
             date.setTime(firstdate * 1000);
         }
-        tdanmurate--;
-        if (tdanmurate < 1) {
-            console.log('count complete');
-            break
-        }
-
-    }
-
-    aldanmu = unique(aldanmu);
-
-    return [aldanmu, ndanmu]
-}
-
-function danmuMatch(danmuContent, rule) {
-    type = rule['type'];
-    content = rule['content'];
-    if (type === 'word') {
-        if (danmu.indexOf(content) !== -1) {
-            return true
-        }
-    }
-    if (type === 'color') {
-        i = 3;
-        pos = 0;
-        while (i > 0) {
-            pos = danmu.indexOf(',', pos + 1);
-            i -= 1;
-        }
-        if (content === danmu.slice(pos + 1, danmu.indexOf(',', pos + 1))) {
-            return true
-        }
-    }
-    if (type === 'reg') {
-        if (danmu.match(content)) {
-            return true
-        }
     }
 }
 
-function danmuFilter(ldanmu) {
-    ldanmu.sort(function (a, b) {
-        return getDanmuPos(a) - getDanmuPos(b)
-    });
-    ruleGroup = {
-        lrule: [
-            {
-                content: 'regexp',
-                type: 'reg',
-                isTrigger: true
+async function moreHistory(cid, duration) {
+    let date = new Date();
+    date.setTime(date.getTime() - 86400000)
+    console.log('GetDanmuFor CID' + cid)
+    let aldanmu = [], ldanmu = []
+    let firstdate = 0;
+    let ndanmu, ondanmu
+    let url = 'https://comment.bilibili.com/' + cid + '.xml'
+    let sdanmu = null
+    while (sdanmu == null) {
+        sdanmu = await xhrGet(url)
+    }
+    ondanmu = ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
+    if (ndanmu === 8000) {
+        ndanmu = parseInt((duration / 24 / 60) * 3000)
+    }
+
+    ldanmu = xml2danmu(sdanmu)
+
+    if (ldanmu.length < ondanmu * 0.9) {
+        return [ldanmu, ndanmu]
+    }
+    while (true) {
+        let sdanmu
+        if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
+            let url = "https://api.bilibili.com/x/v2/dm/web/history/seg.so?type=1&date="
+                + getdate(date) + "&oid=" + cid.toString();
+            console.log('ndanmu:', aldanmu.length, getdate(date), url);
+            sdanmu = loadProtoDanmu(url)
+        }
+        aldanmu = mergeDanmu(aldanmu, ldanmu)
+        if (ldanmu.length < Math.min(ondanmu, 5000) * 0.9 || aldanmu.length > ndanmu * setting.danmuRate) {
+            return [aldanmu, ondanmu]
+        }
+        ldanmu = await sdanmu
+        if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
+            let tfirstdate = getMinDate(ldanmu)
+            if (firstdate !== 0 && firstdate - tfirstdate < 86400)
+                tfirstdate = firstdate - 86400;
+            firstdate = tfirstdate;
+            date.setTime(firstdate * 1000);
+        }
+    }
+}
+
+
+async function loadProtoDanmu(url, timeout = null, header = null, retry = 0) {
+    const xhr = new XMLHttpRequest();
+    try {
+        if (timeout !== null) {
+            xhr.timeout = timeout
+        }
+
+        xhr.open("get", url, true);
+        xhr.responseType = 'arraybuffer';
+
+        if (header !== null) {
+            for (let key in header) {
+                xhr.setRequestHeader(key, header[key])
             }
-        ],
-        period: [0, 60],
-        hasTriger: true,
-        TrigerSize: 10
-    };
-    for (ruleGroup of window.filterRule) {
+        }
+
+        xhr.send()
+
+        return new Promise(
+            (resolve) => {
+                xhr.onreadystatechange = async () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            let lpdanmu = proto_seg.decode(new Uint8Array(xhr.response));
+                            resolve(lpdanmu.elems)
+                        } else {
+                            console.log('XhrError=', retry, '/', xhr)
+                            if (retry < 3) {
+                                resolve(await loadProtoDanmu(url, timeout, header, retry + 1))
+                            } else {
+                                resolve(null)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    } catch (e) {
+        console.log('XhrError=', retry, '/', xhr)
+        if (retry < 3) {
+            return (await loadProtoDanmu(url, timeout, header, retry + 1))
+        }
+    }
+
+}
+
+async function xhrGet(url, timeout = null, header = null, retry = 0) {
+    console.log('Get', url)
+    const xhr = new XMLHttpRequest();
+    try {
+        if (timeout !== null) {
+            xhr.timeout = timeout
+        }
+        xhr.open("get", url, true);
+        if (header !== null) {
+            for (let key in header) {
+                xhr.setRequestHeader(key, header[key])
+            }
+        }
+        xhr.send()
+
+        return new Promise(
+            (resolve) => {
+                xhr.onreadystatechange = async () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            resolve(xhr.responseText)
+                        } else {
+                            console.log('XhrError=', retry, '/', xhr)
+                            if (retry < 3) {
+                                resolve(await xhrGet(url, timeout, header, retry + 1))
+                            } else {
+                                resolve(null)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    } catch (e) {
+        console.log('XhrError=', retry, '/', xhr)
+        if (retry < 3) {
+            return (await xhrGet(url, timeout, header, retry + 1))
+        }
+    }
+
+}
+
+// let lfilterWorker = []
+// for (let i = 0; i < 8; i += 1) {
+//     lfilterWorker.push(new Worker(chrome.runtime.getURL("filterWorker.js")))
+// }
+
+// function inject_panel(tabid) {
+//     setTimeout(function () {
+//         chrome.tabs.executeScript(tabid, {
+//             file: "injected.js",
+//             allFrames: true,
+//             runAt: "document_end"
+//         })
+//     }, 100)
+//
+// }
+
+function crcFilter() {
+    'use strict';
+    if (window.setting.uidFilter == null) {
+        return null
+    }
+    console.log('createTable')
+    let crctable = new Uint32Array(window.setting.uidFilter)
+    let table = "00000000 77073096 EE0E612C 990951BA 076DC419 706AF48F E963A535 9E6495A3 0EDB8832 79DCB8A4 E0D5E91E 97D2D988 09B64C2B 7EB17CBD E7B82D07 90BF1D91 1DB71064 6AB020F2 F3B97148 84BE41DE 1ADAD47D 6DDDE4EB F4D4B551 83D385C7 136C9856 646BA8C0 FD62F97A 8A65C9EC 14015C4F 63066CD9 FA0F3D63 8D080DF5 3B6E20C8 4C69105E D56041E4 A2677172 3C03E4D1 4B04D447 D20D85FD A50AB56B 35B5A8FA 42B2986C DBBBC9D6 ACBCF940 32D86CE3 45DF5C75 DCD60DCF ABD13D59 26D930AC 51DE003A C8D75180 BFD06116 21B4F4B5 56B3C423 CFBA9599 B8BDA50F 2802B89E 5F058808 C60CD9B2 B10BE924 2F6F7C87 58684C11 C1611DAB B6662D3D 76DC4190 01DB7106 98D220BC EFD5102A 71B18589 06B6B51F 9FBFE4A5 E8B8D433 7807C9A2 0F00F934 9609A88E E10E9818 7F6A0DBB 086D3D2D 91646C97 E6635C01 6B6B51F4 1C6C6162 856530D8 F262004E 6C0695ED 1B01A57B 8208F4C1 F50FC457 65B0D9C6 12B7E950 8BBEB8EA FCB9887C 62DD1DDF 15DA2D49 8CD37CF3 FBD44C65 4DB26158 3AB551CE A3BC0074 D4BB30E2 4ADFA541 3DD895D7 A4D1C46D D3D6F4FB 4369E96A 346ED9FC AD678846 DA60B8D0 44042D73 33031DE5 AA0A4C5F DD0D7CC9 5005713C 270241AA BE0B1010 C90C2086 5768B525 206F85B3 B966D409 CE61E49F 5EDEF90E 29D9C998 B0D09822 C7D7A8B4 59B33D17 2EB40D81 B7BD5C3B C0BA6CAD EDB88320 9ABFB3B6 03B6E20C 74B1D29A EAD54739 9DD277AF 04DB2615 73DC1683 E3630B12 94643B84 0D6D6A3E 7A6A5AA8 E40ECF0B 9309FF9D 0A00AE27 7D079EB1 F00F9344 8708A3D2 1E01F268 6906C2FE F762575D 806567CB 196C3671 6E6B06E7 FED41B76 89D32BE0 10DA7A5A 67DD4ACC F9B9DF6F 8EBEEFF9 17B7BE43 60B08ED5 D6D6A3E8 A1D1937E 38D8C2C4 4FDFF252 D1BB67F1 A6BC5767 3FB506DD 48B2364B D80D2BDA AF0A1B4C 36034AF6 41047A60 DF60EFC3 A867DF55 316E8EEF 4669BE79 CB61B38C BC66831A 256FD2A0 5268E236 CC0C7795 BB0B4703 220216B9 5505262F C5BA3BBE B2BD0B28 2BB45A92 5CB36A04 C2D7FFA7 B5D0CF31 2CD99E8B 5BDEAE1D 9B64C2B0 EC63F226 756AA39C 026D930A 9C0906A9 EB0E363F 72076785 05005713 95BF4A82 E2B87A14 7BB12BAE 0CB61B38 92D28E9B E5D5BE0D 7CDCEFB7 0BDBDF21 86D3D2D4 F1D4E242 68DDB3F8 1FDA836E 81BE16CD F6B9265B 6FB077E1 18B74777 88085AE6 FF0F6A70 66063BCA 11010B5C 8F659EFF F862AE69 616BFFD3 166CCF45 A00AE278 D70DD2EE 4E048354 3903B3C2 A7672661 D06016F7 4969474D 3E6E77DB AED16A4A D9D65ADC 40DF0B66 37D83BF0 A9BCAE53 DEBB9EC5 47B2CF7F 30B5FFE9 BDBDF21C CABAC28A 53B39330 24B4A3A6 BAD03605 CDD70693 54DE5729 23D967BF B3667A2E C4614AB8 5D681B02 2A6F2B94 B40BBE37 C30C8EA1 5A05DF1B 2D02EF8D",
+        crc32 = function ( /* String */ str, /* Number */ crc = 0) {
+            let n = 0; //a number between 0 and 255
+            let x = 0; //an hex number
+            crc = crc ^ (-1);
+            for (let i = 0, iTop = str.length; i < iTop; i++) {
+                n = (crc ^ str.charCodeAt(i)) & 0xFF;
+                x = "0x" + table.substr(n * 9, 8);
+                crc = (crc >>> 8) ^ x;
+            }
+            return (crc ^ (-1)) >>> 0;
+        };
+    for (let i = 0; i < window.setting.uidFilter; i += 1) {
+        crctable[i] = crc32(i.toString())
+    }
+    crctable.sort()
+    console.log('tableCreated')
+    return function (hash) {
+        hash = parseInt(hash, 16)
+        let start = 0;
+        let end = crctable.length - 1;
+        let mid = Math.floor((start + end) / 2);
+        while (start <= end) {
+            if (hash > crctable[mid]) {
+                start = mid + 1;
+                mid = Math.floor((start + end) / 2);
+            } else if (hash < crctable[mid]) {
+                end = mid - 1;
+                mid = Math.floor((start + end) / 2);
+            } else {
+                return true;
+            }
+        }
+        return false
+    }
+}
+
+window.crcFilter = crcFilter()
+
+async function danmuFilter(ldanmu) {
+    if (setting.filterRule.length === 0) {
+        return ldanmu
+    }
+    let uldanmu = [], olength = ldanmu.length
+
+    if (setting.uidFilter !== null) {
+        let tldanmu = []
+        for (let i = 0; i < ldanmu.length; i += 1) {
+            if (window.crcFilter(ldanmu[i]).midHash) {
+                uldanmu.push(ldanmu[i])
+            } else tldanmu.push(ldanmu[i])
+        }
+        ldanmu = tldanmu
+    }
+
+    for (let ruleGroup of setting.filterRule) {
         if (!ruleGroup['hasTrigger']) {
-            nldanmu = [];
-            for (danmu of ldanmu) {
-                pos = getDanmuPos(danmu);
-                content = getDanmuContent(danmu);
-                if (ruleGroup['period'] !== null) {
-                    if (pos < ruleGroup['period'][0]) {
-                        continue
+            let ndanmu = Math.floor(tldanmu.length / 8)
+            let nldanmu = [];
+            await new Promise((resolve) => {
+                let iprogress = 0
+                for (let i = 0; i < 8; i += 1) {
+                    let worker = lfilterWorker[i], end
+                    if (i !== 7) {
+                        end = (i + 1) * ndanmu
+                    } else {
+                        end = ldanmu.length
                     }
-                    if (pos > ruleGroup['period'][1]) {
-                        break
+                    worker.postMessage({rule: ruleGroup, ldanmu: ldanmu.slice(i * ndanmu, end),})
+                    worker.onmessage = (event) => {
+                        // console.log(event.data.ldanmu.length,nldanmu.length)
+                        nldanmu = nldanmu.concat(event.data.ldanmu)
+                        iprogress += 1
+                        if (iprogress === 8) {
+                            resolve()
+                        }
                     }
                 }
-                ffilted = false;
-
-                for (rule of ruleGroup['lrule']) {
-                    if (danmuMatch(content, rule)) {
-                        ffilted = true;
-                        break
-                    }
-                }
-                if (!ffilted) {
-                    nldanmu.push(danmu)
-                }
-            }
+            })
             ldanmu = nldanmu;
         } else {
-            lastTriggeredPos = 0;
-            triggerCount = 0;
-            allCount = 0;
-            ftriggered = false;
-            tldanmu = [];
-            for (danmu of ldanmu) {
-                pos = getDanmuPos(danmu);
-                content = getDanmuContent(danmu);
-                for (rule of ruleGroup['lrule']) {
-                    if (!ftriggered) {
-                        allCount += 1;
-                        if (rule['isTrigger'] === true && danmuMatch(content, rule)) {
-                            if (lastTriggeredPos === 0) {
-                                lastTriggeredPos = pos;
-                            } else {
-                                if (pos - lastTriggeredPos > 10) {
-                                    nldanmu.concat(tldanmu);
-                                    tldanmu = [];
-                                    triggerCount = 0;
-                                    allCount = 0;
-                                    lastTriggeredPos = 0;
-                                }
-                            }
-                            tldanmu.push(danmu);
-                            triggerCount += 1;
-                            if (triggerCount > 20 && triggerCount / allCount > 0.3) {
-                                ttldanmu = [];
-                                for (tdanmu of tldanmu) {
-                                    pos = getDanmuPos(tdanmu);
-                                    content = getDanmuContent(tdanmu);
-                                    ffilted = false;
-                                    for (rule of ruleGroup['lrule']) {
-                                        if (danmuMatch(content, rule)) {
-                                            ffilted = true;
-                                            break
-                                        }
-                                    }
-                                    if (!ffilted) {
-                                        ttldanmu.push(tdanmu)
-                                    }
-
-                                }
-                                tldanmu = [];
-                                ftriggered = true
-                            }
-                        }
-                    } else {
-                        if (pos - lastTriggeredPos > 10) {
-                            ftriggered = false;
-                        }
-                        for (rule of ruleGroup['lrule']) {
-                            if (danmuMatch(content, rule)) {
-                                ffilted = true;
-                                break
-                            }
-                        }
-                        if (!ffilted) {
-                            nldanmu.push(danmu)
-                        }
-                    }
-
-                }
-            }
-            ldanmu = nldanmu;
+            // let nldanmu = [];
+            // let lastTriggeredPos = 0;
+            // let triggerCount = 0;
+            // let allCount = 0;
+            // let ftriggered = false;
+            // let tldanmu = [];
+            // for (danmu of ldanmu) {
+            //     let pos = getDanmuPos(danmu);
+            //     let content = getDanmuContent(danmu);
+            //     let ffilted = false
+            //     for (let rule of ruleGroup['lrule']) {
+            //         if (!ftriggered) {
+            //             allCount += 1;
+            //             if (rule['isTrigger'] === true && danmuMatch(content, rule)) {
+            //                 if (lastTriggeredPos === 0) {
+            //                     lastTriggeredPos = pos;
+            //                 } else {
+            //                     if (pos - lastTriggeredPos > 10) {
+            //                         nldanmu.concat(tldanmu);
+            //                         tldanmu = [];
+            //                         triggerCount = 0;
+            //                         allCount = 0;
+            //                         lastTriggeredPos = 0;
+            //                     }
+            //                 }
+            //                 tldanmu.push(danmu);
+            //                 triggerCount += 1;
+            //                 if (triggerCount > 20 && triggerCount / allCount > 0.3) {
+            //                     let ttldanmu = [];
+            //                     for (tdanmu of tldanmu) {
+            //                         pos = getDanmuPos(tdanmu);
+            //                         content = getDanmuContent(tdanmu);
+            //                         let ffilted = false;
+            //                         for (rule of ruleGroup['lrule']) {
+            //                             if (danmuMatch(content, rule)) {
+            //                                 ffilted = true;
+            //                                 break
+            //                             }
+            //                         }
+            //                         if (!ffilted) {
+            //                             ttldanmu.push(tdanmu)
+            //                         }
+            //
+            //                     }
+            //                     tldanmu = [];
+            //                     ftriggered = true
+            //                 }
+            //             }
+            //         } else {
+            //             if (pos - lastTriggeredPos > 10) {
+            //                 ftriggered = false;
+            //             }
+            //             for (rule of ruleGroup['lrule']) {
+            //                 if (danmuMatch(content, rule)) {
+            //                     ffilted = true;
+            //                     break
+            //                 }
+            //             }
+            //             if (!ffilted) {
+            //                 nldanmu.push(danmu)
+            //             }
+            //         }
+            //
+            //     }
+            // }
+            // ldanmu = nldanmu;
         }
     }
-    return ldanmu;
+    // if (window.setting.uidFilter !== null) {
+    //     let tldanmu = []
+    //     for (let danmu of ldanmu) {
+    //         if (window.crcFilter(getDanmuUserhash(danmu))) {
+    //             tldanmu.push(danmu)
+    //         }
+    //     }
+    //     ldanmu = tldanmu
+    // }
+    ldanmu = ldanmu.concat(uldanmu)
+    console.log('Filter:', olength, '=>', ldanmu.length)
+
+    return ldanmu
 }
 
-
 async function localServer(order, argv) {
-    var ws = new WebSocket("ws://localhost:56789");
+    let ws = new WebSocket("ws://localhost:56789");
 
     ws.onopen = function (evt) {
         ws.send(htmlEscape(order + ':' + argv))
     }
+    let res = await new Promise((resolve) => {
+        ws.onmessage = function (evt) {
+            resolve(evt.data);
+        }
+    })
+    try {
+        if (order !== 'read' || res.slice(0, 7) === '[failed') {
+            res = JSON.parse(res)
+        }
+    } catch (e) {
 
-    async function recvData() {
-        await new Promise((resolve) => {
-            ws.onmessage = function (evt) {
-                data = evt.data
-
-                res = data
-                resolve();
-            }
-        })
-
-        return res
     }
 
-    res = await recvData()
-    if (order !== 'read' || res.slice(0, 7) === '[failed') {
-        res = JSON.parse(res)
-    }
     return res
 }
 
 
-function nicoDanmu(nicoid) {
-    console.log('Found NicoID:' + nicoinfo)
-    const xhr = new XMLHttpRequest();
-    xhr.open("get", 'http://39.102.56.130:400/nico/?nicoid='
-        + nicoid, false);
-    tldanmu = []
-    xhr.send();
-    if (xhr.readyState === 4 && xhr.status === 200) {
-        nicodanmu = xhr.responseText;
-        tldanmu = nicodanmu.split('\n');
+async function nicoDanmu(nicoid) {
+    console.log('Found NicoID:' + nicoid)
+    let nicodanmu = await xhrGet('http://39.102.56.130:400/nico/?nicoid=' + nicoid)
+    if (!nicodanmu) {
+        return []
     }
+    let tldanmu = xml2danmu(nicodanmu)
+
     console.log('ndanmu:' + tldanmu.length + ' from niconico')
-    console.log(tldanmu)
     return tldanmu
 }
 
-function youtubeDanmu(youtubeUrl) {
-    const xhr = new XMLHttpRequest();
-    xhr.open("get", 'https://api.dmooji.com/api/v3/comments/' + youtubeUrl + '?user_id=undefined'
-        , false);
+async function youtubeDanmu(youtubeUrl) {
 
-    xhr.send();
-    aldanmu = []
-
-    if (xhr.readyState === 4 && xhr.status === 200) {
-        sdanmu = xhr.responseText;
-        // console.log(sdanmu)
-        try {
-            tldanmu = JSON.parse(sdanmu)['data']['comments']
-        } catch (e) {
-            tldanmu = JSON.parse('[' + sdanmu + ']')
+    let sdanmu = await xhrGet('https://api.dmooji.tv/api/v3/comments/' + youtubeUrl + '?user_id=undefined', null,
+        {
+            'accept': '*/*',
+            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7',
+            'content-type': 'application/json; charset=utf-8',
+        })
+    if (sdanmu === null) {
+        console.log('dmooji failed')
+        return []
+    }
+    let aldanmu = []
+    let tldanmu = JSON.parse(sdanmu)['data']['comments']
+    let date = new Date();
+    for (ddanmu of tldanmu) {
+        if (!/(\d:\d)/.exec(htmlEscape(ddanmu['text']))) {
+            continue
         }
-        date = new Date();
-        for (ddanmu of ldanmu) {
-            largv = [ddanmu['stime'] / 1000, ddanmu['mode'], 25, ddanmu['color'], date.getTime(), 0, 'youtube', ddanmu['comment_id']]
-            danmu = '"' + largv.join(',') + '">' + htmlEscape(ddanmu['text'])
-            aldanmu.push(danmu)
-        }
+        let largv = [ddanmu['stime'] / 1000, ddanmu['mode'], 25, ddanmu['color'], date.getTime(), 0, 'youtube', ddanmu['comment_id']]
+        let danmu = '"' + largv.join(',') + '">' + htmlEscape(ddanmu['text'])
+        aldanmu.push(danmu)
     }
     console.log('ndanmu:' + aldanmu.length + ' from youtube')
     return aldanmu
 }
 
+async function youtubeSubtitle(request) {
+    let aid = /aid=(\d*)/.exec(request.url)
+    let viewInfo = xhrGet(+'&cid=' + request.cid)
+    viewInfo = JSON.parse(viewInfo)
+    // if()
+}
+
+function bindPath(request) {
+    let ldeposide = JSON.parse(request.arg)
+
+    function paste() {
+        let bg = chrome.extension.getBackgroundPage();        // get the background page
+        bg.document.body.innerHTML = "";                   // clear the background page
+
+// add a DIV, contentEditable=true, to accept the paste action
+        let helperdiv = bg.document.createElement("div");
+        document.body.appendChild(helperdiv);
+        helperdiv.contentEditable = true;
+
+// focus the helper div's content
+        let range = document.createRange();
+        range.selectNode(helperdiv);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        helperdiv.focus();
+
+// trigger the paste action
+        bg.document.execCommand("Paste");
+
+// read the clipboard contents from the helperdiv
+        return helperdiv.innerHTML;
+    }
+
+    let lpath = paste()
+    lpath = lpath.split('"</div><div>"')
+    lpath[0] = lpath[0].slice(6)
+    lpath[lpath.length - 1] = lpath[lpath.length - 1].slice(0, -7)
+    lpath.sort()
+    i = -1
+    for (deposide of ldeposide) {
+        i += 1
+        setting.bindedCid[deposide['cid']] = lpath[i]
+    }
+    console.log(setting.bindedCid)
+    let tldldanmu = []
+    for (dlanmu of window.ldldanmu) {
+        let fbreak = false
+        for (deposide of ldeposide) {
+            if (dlanmu['cid'] === deposide['cid']) {
+                fbreak = true
+                break
+            }
+        }
+        if (!fbreak) {
+            tldldanmu.push(dldanmu)
+        }
+    }
+    window.ldldanmu = tldldanmu
+    saveConfig()
+}
+
 async function localDanmu(path) {
-    lfdanmu = await localServer('danmuPath', peposide)
-    ldanmu = []
+    let lfdanmu = await localServer('danmuPath', path)
+    let ldanmu = []
     if (lfdanmu[0] !== 'failed') {
-        content = null
-        timestamp = null
+        let content = null
+        let timestamp = null
         for (fdanmu of lfdanmu) {
-            sdanmu = await localServer('read', fdanmu)
+            let sdanmu = await localServer('read', fdanmu)
             if (sdanmu[0] !== 'failed') {
-                tldanmu = xml2danmu(sdanmu)
+                let tldanmu = xml2danmu(sdanmu)
                 for (danmu of tldanmu) {
-                    ncontent = getDanmuContent(danmu)
-                    ntimestamp = getDanmuDate(danmu)
+                    let ncontent = getDanmuContent(danmu)
+                    let ntimestamp = getDanmuDate(danmu)
                     if (ncontent === content && timestamp === ntimestamp) {
 
                     } else {
@@ -1722,133 +2055,413 @@ async function localDanmu(path) {
     return ldanmu
 }
 
+let currentDanmu
+
+// let youtubeCommentDict = {
+//     questPool: new Set(),
+//     idPool: [],
+//     continuePool: []
+// }
+//
+// function buildYoutubeCommentResponse(details) {
+//     console.log(details)
+//     let aid = /oid=(.*?)&/.exec(details.url)[1]
+//
+//     let request = null
+//     for (let dcid of window.ldldanmu) {
+//         if (dcid.aid === aid) {
+//             request = dcid
+//         }
+//     }
+//     if (request === null) {
+//         return null
+//     }
+//     let youtubeUrl = request.youtubeUrl
+//     const xhr = new XMLHttpRequest();
+//     xhr.open("get", 'http://39.102.56.130:400/youtube_comment/?youtubeid=' + youtubeUrl, false);
+//     xhr.send()
+//     let res = xhr.response
+//     console.log(res, xhr)
+//     res = JSON.parse(res)
+//     console.log(res)
+//     let comments = res.comments
+//     let head = /callback=(.*?)&/.exec(details.url)[0]
+//     let data = {
+//         "code": 0,
+//         "message": "0",
+//         "ttl": 1,
+//         "data": {
+//             "cursor": {
+//                 "all_count": 1,
+//                 "is_begin": true,
+//                 "prev": 1,
+//                 "next": 1,
+//                 "is_end": false,
+//                 "mode": 2,
+//                 "show_type": 1,
+//                 "support_mode": [
+//                     1,
+//                     2,
+//                     3
+//                 ],
+//                 "name": "最新评论"
+//             },
+//             "hots": null,
+//             "notice": null,
+//             "replies": [],
+//             "top": {
+//                 "admin": null,
+//                 "upper": null,
+//                 "vote": null
+//             },
+//             "lottery_card": null,
+//             "folder": {
+//                 "has_folded": false,
+//                 "is_folded": false,
+//                 "rule": "https://www.bilibili.com/blackboard/foldingreply.html"
+//             },
+//             "up_selection": {
+//                 "pending_count": 0,
+//                 "ignore_count": 0
+//             },
+//             "cm": {},
+//             "effects": {
+//                 "preloading": ""
+//             },
+//             "assist": 0,
+//             "blacklist": 0,
+//             "vote": 0,
+//             "lottery": 0,
+//             "config": {
+//                 "showadmin": 1,
+//                 "showentry": 1,
+//                 "showfloor": 0,
+//                 "showtopic": 1,
+//                 "show_up_flag": true,
+//                 "read_only": false,
+//                 "show_del_log": true
+//             },
+//             "upper": {
+//                 "mid": 492319438
+//             },
+//             "show_bvid": false,
+//             "control": {
+//                 "input_disable": false,
+//                 "root_input_text": "发一条友善的评论",
+//                 "child_input_text": "",
+//                 "giveup_input_text": "不发没关系，请继续友善哦~",
+//                 "bg_text": "看看下面~来发评论吧",
+//                 "web_selection": false,
+//                 "answer_guide_text": "需要升级成为lv2会员后才可以评论，先去答题转正吧！",
+//                 "answer_guide_icon_url": "http://i0.hdslb.com/bfs/emote/96940d16602cacbbac796245b7bb99fa9b5c970c.png",
+//                 "answer_guide_ios_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1\u0026re_src=12",
+//                 "answer_guide_android_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1\u0026re_src=6",
+//                 "show_type": 1,
+//                 "show_text": ""
+//             }
+//         }
+//     }
+//     for (let comment of comments) {
+//
+//         let show_follow = false
+//         let cid = 0
+//         if (comment.hasOwnProperty('replies')) {
+//             youtubeCommentDict.idPool.push(comment.replies)
+//             cid = youtubeCommentDict.idPool.length - 1
+//             show_follow = true
+//         }
+//         s = {
+//             "rpid": cid,
+//             "oid": 0,
+//             "type": 1,
+//             "mid": 0,
+//             "root": 0,
+//             "parent": 0,
+//             "dialog": 0,
+//             "count": 0,
+//             "rcount": 0,
+//             "floor": 1,
+//             "state": 0,
+//             "fansgrade": 0,
+//             "attr": 0,
+//             "ctime": 0,
+//             "rpid_str": "0",
+//             "root_str": "0",
+//             "parent_str": "0",
+//             "like": comment.votes,
+//             "action": 0,
+//             "member": {
+//                 "mid": "0",
+//                 "uname": comment.author,
+//                 "sex": "未知",
+//                 "sign": "",
+//                 "avatar": comment.photo,
+//                 "rank": "10000",
+//                 "DisplayRank": "0",
+//                 "level_info": {
+//                     "current_level": 0,
+//                     "current_min": 0,
+//                     "current_exp": 0,
+//                     "next_exp": 0
+//                 },
+//                 "pendant": {
+//                     "pid": 0,
+//                     "name": "",
+//                     "image": "",
+//                     "expire": 0,
+//                     "image_enhance": "",
+//                     "image_enhance_frame": ""
+//                 },
+//                 "nameplate": {
+//                     "nid": 0,
+//                     "name": "",
+//                     "image": "",
+//                     "image_small": "",
+//                     "level": "",
+//                     "condition": ""
+//                 },
+//                 "official_verify": {
+//                     "type": -1,
+//                     "desc": ""
+//                 },
+//                 "vip": {
+//                     "vipType": 1,
+//                     "vipDueDate": 1611072000000,
+//                     "dueRemark": "",
+//                     "accessStatus": 0,
+//                     "vipStatus": 0,
+//                     "vipStatusWarn": "",
+//                     "themeType": 0,
+//                     "label": {
+//                         "path": "",
+//                         "text": "",
+//                         "label_theme": "",
+//                         "text_color": "",
+//                         "bg_style": 0,
+//                         "bg_color": "",
+//                         "border_color": ""
+//                     },
+//                     "avatar_subscript": 0,
+//                     "nickname_color": ""
+//                 },
+//                 "fans_detail": null,
+//                 "following": 0,
+//                 "is_followed": 0,
+//                 "user_sailing": {
+//                     "pendant": null,
+//                     "cardbg": null,
+//                     "cardbg_with_focus": null
+//                 },
+//                 "is_contractor": false
+//             },
+//             "content": {
+//                 "message": comment.time + '\n' + comment.text,
+//                 "plat": 2,
+//                 "device": "",
+//                 "members": [],
+//                 "jump_url": {},
+//                 "max_line": 6
+//             },
+//             "replies": null,
+//             "assist": 0,
+//             "folder": {
+//                 "has_folded": false,
+//                 "is_folded": false,
+//                 "rule": "https://www.bilibili.com/blackboard/foldingreply.html"
+//             },
+//             "up_action": {
+//                 "like": false,
+//                 "reply": false
+//             },
+//             "show_follow": show_follow,
+//             "invisible": false
+//         }
+//         data.data.replies.push(s)
+//     }
+//     return head + JSON.stringify(data) + ')'
+// }
+//
+// var onBeforeSendHeadersListener = function (details) {
+//     // view request + headers to be send
+//     console.log(details);
+//
+//     // block XMLHttpRequests by returning object with key "cancel"
+//     if (details.type == "xmlhttprequest") {
+//         return {
+//             cancel: false
+//         };
+//     }
+//
+//     // modify the user agent of all script resources by changing the requestHeaders and then return an object with key "requestHeaders"
+//     if (details.type == "script") {
+//         for (var i = 0; i < details.requestHeaders.length; i++) {
+//             if (details.requestHeaders[i].name == "User-Agent") {
+//                 details.requestHeaders[i].value = "I'm not a bot";
+//             }
+//         }
+//         return {
+//             "requestHeaders": details.requestHeaders
+//         };
+//     }
+// }
+//
+//
+// var onBeforeRequestListener = function (details) {
+//     console.log(details)
+//     return {cancel: true}
+//
+//     let mode = /mode=(.*?)&/.exec(details.url)
+//
+//     if (mode[1] !== "3") {
+//         return {cancel: false}
+//     }
+//     let aid = /oid=(.*?)&/.exec(details.url)[1]
+//     if (!youtubeCommentDict.questPool.has(aid)) {
+//         youtubeCommentDict.questPool.add(aid)
+//         return {cancel: false}
+//     } else {
+//         youtubeCommentDict.questPool.delete(aid)
+//     }
+//     let res = buildYoutubeCommentResponse(details)
+//     if (res !== null) {
+//         // return {cancel:true}
+//         redirectUrl = 'data:application/json; charset=utf-8,' + res
+//         return {redirectUrl}
+//     } else {
+//         return {cancel: false}
+//     }
+//
+//     // all images will now be loaded from this location instead
+//     // CAREFUL! CROSS ORIGIN REQUESTS WILL NOT BE BLOCKED WITH CHROME EXTENSIONS
+//
+// }
+//
+//
+// chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {
+//     urls: ["https://s1.hdslb.com/bfs/seed/jinkela/commentpc*"]
+// }, ['blocking', 'requestBody']);
+
+
 chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
+    function sendResponseAsync(message) {
+        chrome.tabs.sendMessage(sender.tab.id, message)
+    }
+
+    let tabid = sender.tab.id;
     console.log(request.type);
     if (request.type === "ajax_hook") {
-        console.log(request.url);
-        ret = parse_danmu_url(request.url);
-        if (ret) {
-            var protocol = ret[1], cid = ret[2], debug = ret[3], url_type = ret[4];
-            console.log(url_type)
-            var ldanmu = null
-            if (!test){
-                for (dldanmu of window.ldldanmu) {
+        if (request.url.indexOf('.so') !== -1) {
+            let ret = parse_danmu_url(request.url);
+            if (ret) {
+                let protocol = ret[1], cid = ret[2], debug = ret[3], url_type = ret[4];
+                let ldanmu = null, ndanmu = null
+                for (let dldanmu of window.ldldanmu) {
                     if (dldanmu['cid'] === cid) {
+                        if (dldanmu.ldanmu == null) {
+                            await new Promise(resolve => {
+                                function handle(event) {
+                                    if (event.data.type !== 'cidCache' || event.data.cid !== cid) {
+                                        return
+                                    }
+                                    window.removeEventListener('message', handle)
+                                    resolve()
+                                }
+
+                                window.addEventListener("message", handle)
+                            })
+                        }
                         ldanmu = dldanmu['ldanmu']
                         ndanmu = dldanmu['ndanmu']
-                        console.log('readTemp')
+                        // console.log('readTemp')
                         break
                     }
                 }
-            }
-            if (ldanmu === null) {
-                ret = moreHistory(cid)
-                ldanmu = ret[0]
-                var ndanmu = ret[1]
-                console.log('ndanmu:' + ldanmu.length + ' from history')
-                peposide = window.dbindCid[cid]
-                if (peposide !== undefined) {
-                    ldanmu=ldanmu.concat(localDanmu(peposide))
-                }
-                nicoinfo = request.nicoinfo
-                if (nicoinfo !== null) {
-                    console.log(nicoinfo)
-                    nicoid = nicoinfo.slice(nicoinfo.lastIndexOf('/') + 1, nicoinfo.length);
-                    ldanmu=ldanmu.concat(nicoDanmu(nicoid))
-                }
-                youtubeUrl = request.youtubeUrl
-                if (youtubeUrl !== null) {
-                    console.log(youtubeUrl)
-                    console.log('Found YoutubeURL:' + youtubeUrl)
-                    ldanmu=ldanmu.concat(youtubeDanmu(youtubeUrl))
-                }
-                // ldanmu = de_duplication(ldanmu)
-                if (window.ldldanmu.length > 5) {
-                    window.ldldanmu.shift()
-                }
-                window.ldldanmu.push({'cid': cid, 'ldanmu': ldanmu, 'ndanmu': ndanmu})
-            }
+                if (ldanmu === null) {
+                    if (window.ldldanmu.length > 10) {
+                        window.ldldanmu.shift()
+                    }
+                    window.ldldanmu.push({
+                        "aid": request.aid,
+                        'cid': cid,
+                        'nicoinfo': request.nicoinfo,
+                        'youtubeUrl': request.youtubeUrl,
+                        'ldanmu': null,
+                        'ndanmu': null
+                    })
+                    ret = await moreHistory(cid, request.duration)
+                    inject_panel(tabid)
+                    ldanmu = ret[0]
+                    ndanmu = ret[1]
+                    console.log('ndanmu:' + ldanmu.length + ' from history')
+                    let peposide = setting.bindedCid[cid]
+                    if (peposide !== undefined) {
+                        ldanmu = ldanmu.concat(localDanmu(peposide))
+                    }
+                    let nicoinfo = request.nicoinfo
+                    if (nicoinfo !== null) {
+                        console.log('Found niconicoURL:' + nicoinfo)
+                        ldanmu = ldanmu.concat(await nicoDanmu(nicoinfo))
+                    }
+                    let youtubeUrl = request.youtubeUrl
+                    // if (youtubeUrl !== null) {
+                    //     console.log('Found YoutubeURL:' + youtubeUrl)
+                    //     ldanmu = ldanmu.concat(await youtubeDanmu(youtubeUrl))
+                    // }
+                    if (window.ldldanmu.length > 5) {
+                        window.ldldanmu.shift()
+                    }
 
+                    for (let i = 0; i < window.ldldanmu.length; i += 1) {
+                        if (window.ldldanmu[i].cid === cid) {
+                            window.ldldanmu[i].ldanmu = ldanmu
+                            window.ldldanmu[i].ndanmu = ndanmu
+                        }
+                    }
+                    window.postMessage({type: 'cidCache', cid: cid})
+                }
+                currentDanmu = ldanmu
 
-            if (!url_type.startsWith('segment_index')) {
-                console.log('total ndanmu:' + ldanmu.length)
-                var res = genxml(ldanmu, ndanmu, cid);
-            } else {
-                segindex = parseInt(url_type.substring(14))
-                if (segindex === 1) {
+                let res
+                if (!url_type.startsWith('segment_index')) {
                     console.log('total ndanmu:' + ldanmu.length)
+                    res = genxml(ldanmu, ndanmu, cid);
+                } else {
+                    let segindex = parseInt(url_type.substring(14))
+                    if (segindex === 1) {
+                        console.log('total ndanmu:' + ldanmu.length)
+                    }
+                    res = await ldanmu_to_proto_seg(ldanmu, segindex, cid)
+                    console.log('cid:', cid, 'segindex:', segindex, 'length', res[1])
+                    res = res[0]
                 }
-                res = ldanmu_to_proto_seg(ldanmu, segindex)
-                console.log('arrayLength:' + res.length)
+                sendResponseAsync({
+                    data: res,
+                    type: request.type + '_response',
+                    href: request.url,
+                    ndanmu: ldanmu.length
+                });
+            } else {
+                sendResponseAsync({
+                    data: null,
+                    type: request.type + '_response',
+                    arg: request.arg,
+                });
             }
-            sendResponse({
-                data: res
-            });
         } else {
-            sendResponse({
-                data: null
+            sendResponseAsync({
+                data: null,
+                type: request.type + '_response',
+                arg: request.arg,
             });
         }
-
-    }
-    if (request.type === "bindLocalDanmu") {
+        sendResponse()
+    } else if (request.type === "bindLocalDanmu") {
         bindPath(request)
+        sendResponse(null)
+    } else if (request.type === "getSetting") {
+        sendResponse(window.setting)
     }
 });
-
-function bindPath(request) {
-    ldeposide = JSON.parse(request.arg)
-
-    function paste() {
-        bg = chrome.extension.getBackgroundPage();        // get the background page
-        bg.document.body.innerHTML = "";                   // clear the background page
-
-// add a DIV, contentEditable=true, to accept the paste action
-        var helperdiv = bg.document.createElement("div");
-        document.body.appendChild(helperdiv);
-        helperdiv.contentEditable = true;
-
-// focus the helper div's content
-        var range = document.createRange();
-        range.selectNode(helperdiv);
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-        helperdiv.focus();
-
-// trigger the paste action
-        bg.document.execCommand("Paste");
-
-// read the clipboard contents from the helperdiv
-        return helperdiv.innerHTML;
-    }
-
-    lpath = paste()
-    lpath = lpath.split('"</div><div>"')
-    lpath[0] = lpath[0].slice(6)
-    lpath[lpath.length - 1] = lpath[lpath.length - 1].slice(0, -7)
-    lpath.sort()
-    i = -1
-    for (deposide of ldeposide) {
-        i += 1
-        window.dbindCid[deposide['cid']] = lpath[i]
-    }
-    console.log(window.dbindCid)
-    tldldanmu = []
-    for (dlanmu of window.ldldanmu) {
-        fbreak = false
-        for (deposide of ldeposide) {
-            if (dlanmu['cid'] === deposide['cid']) {
-                fbreak = true
-                break
-            }
-        }
-        if (!fbreak) {
-            tldldanmu.push(dldanmu)
-        }
-    }
-    window.ldldanmu = tldldanmu
-    saveConfig()
-}
 
 
 
