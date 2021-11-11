@@ -25,7 +25,7 @@
 # 安装方法(以Chrome浏览器为例):
     
 
-1.下载并解压扩展程序
+1.下载并解压扩展程序,点击绿色的Code,选择"Download ZIP"
 
 2.在Chrome地址栏中输入 chrome://extensions/ 并打开
 
