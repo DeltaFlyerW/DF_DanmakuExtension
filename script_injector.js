@@ -6,6 +6,21 @@ if (document.head) {
         await new Promise((resolve) => setTimeout(resolve, time));
     }
 
+    function bv2av(str) {
+        const table = [...'fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF'];
+        const s = [11, 10, 3, 8, 4, 6];
+        const xor = 177451812;
+        const add = 8728348608;
+        let result = 0;
+        let i = 0;
+        while (i < 6) {
+            result += table.indexOf(str[s[i]]) * 58 ** i;
+            i += 1;
+        }
+        ;
+        return result - add ^ xor
+    }
+
     let lastHref = null
     let lastDesc = null
 
@@ -84,6 +99,14 @@ if (document.head) {
                     }
                 }
             }
+        } else {
+            try {
+                aid = document.querySelector('meta[itemprop="url"]')
+                aid = /(BV.*?)[\/?]/.exec(aid.getAttribute('content'))[1]
+                aid = bv2av(aid)
+            } catch (e) {
+                console.log(e)
+            }
         }
         lastHref = window.location.href
         lastDesc = [aid, youtubeUrl, nicoinfo, ssid, ipage]
@@ -142,6 +165,10 @@ if (document.head) {
                                 chrome.runtime.onMessage.removeListener(handle)
                                 if (resp.data !== null && resp.ndanmu !== null) {
                                     console.log('GotDanmuFromDFex', resp.ndanmu)
+                                    let elem=document.querySelector("#danmukuBox > div > div > div.bpx-player-collapse.bui.bui-collapse > div > div > div.bui-collapse-body > div > div.bpx-player-filter-wrap.bpx-player-dm > div.bpx-player-dm-wrap > div.bpx-player-dm-load-status")
+                                    if(elem!==null){
+                                        elem.remove()
+                                    }
                                     if (skipCid !== cid) {
                                         if (ondanmu !== null) {
                                             if (Number(ondanmu.textContent) > resp.ndanmu) {
@@ -201,47 +228,6 @@ if (document.head) {
         ,
         false
     );
-    // document.addEventListener("DOMNodeInserted", (msg) => {
-    //     if (msg.target.className) {
-    //         // console.log(msg)
-    //         if (msg.target.className === ' phizbox' || msg.target.className === 'chat-line__message') {
-    //             window.lyydanmu.push([msg.target.innerHTML, new Date().getTime()])
-    //             console.log(window.lyydanmu[window.lyydanmu.length - 1].toString())
-    //         }
-    //         if (msg.target.className === "comment-send ") {
-    //             if (youtubeManager.lastHref !== window.location.href) {
-    //                 youtubeManager.youtubeId = null
-    //                 youtubeManager.continuation = null
-    //                 youtubeManager.itct = null
-    //                 youtubeManager.isEnd = false
-    //                 youtubeManager.showed = false
-    //                 youtubeManager.commentList = []
-    //                 youtubeManager.lastHref = window.location.href
-    //             }
-    //
-    //             if (document.querySelector('li[class^="youtube-comment"]')) {
-    //                 return
-    //             }
-    //             if (lastDesc === null) {
-    //                 lastDesc = getDescInfo()
-    //             }
-    //             let youtubeId = lastDesc[1]
-    //             if (youtubeId) {
-    //                 if (youtubeManager.created === false) {
-    //                     youtubeManager.created = true
-    //                     youtubeManager.youtubeId = youtubeId
-    //                     postHook('replaceLoadPage', {})
-    //                 }
-    //                 renderYoutubeButton()
-    //             }
-    //             // youtubeListItem.addEventListener('click', youtubeCommentButton)
-    //         }
-    //         if (msg.target.className === "bilibili-player-video-info " || msg.target.className === "bilibili-player-video-sendbar bilibili-player-normal-mode") {
-    //             msg.target.querySelector('div[class="bilibili-player-video-info-all"]').style.display = "none"
-    //             msg.target.querySelector('div[class="bilibili-player-video-info-tips"]').style.display = "none"
-    //         }
-    //     }
-    // });
 
     let youtubeManager = {
         youtubeId: null,
@@ -569,7 +555,7 @@ if (document.head) {
         commentTitle.appendChild(youtubeListItem)
     }
 
-
+    console.log('inject xhrhook')
     let script = document.createElement("script");
     script.src = chrome.runtime.getURL("xhr_hook.js");
 
