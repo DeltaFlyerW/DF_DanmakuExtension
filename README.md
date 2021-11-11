@@ -25,7 +25,7 @@
 # 安装方法(以Chrome浏览器为例):
     
 
-1.在右侧的Release中选择最新的一项,下载crx文件
+1.在右侧的Release中选择最新的一项,下载crx文件,或从 https://delflare505.win:800/dfex 下载crx文件
 
 2.在Chrome地址栏中输入 chrome://extensions/ 并打开
 
