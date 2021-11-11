@@ -1,4 +1,4 @@
-let test = true
+let test = false
 let version = '2.0'
 
 function loadConfig() {
