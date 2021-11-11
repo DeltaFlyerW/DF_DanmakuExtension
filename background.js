@@ -1,7 +1,7 @@
 let test = false
 let version = '2.0'
 
-function loadConfig() {
+async function loadConfig() {
     // console.log(localStorage)
     window.setting = {};
     if (!test) {
@@ -25,6 +25,8 @@ function loadConfig() {
         }
 
     } else initConfig()
+    // window.hasProxy = ((await xhrGet('https://anime.nicovideo.jp/free/?from=nanime_side')) !== null)
+    window.hasProxy = false
     help()
 
     // console.log(defaultConfig)
@@ -66,12 +68,13 @@ function editConfig(key, value) {
         return;
     }
     if (key === 'uidFilter') {
-        if(value>100000000){
+        if (value > 100000000) {
             console.log('不推荐用户uid过滤大于一亿')
         }
     }
-    if(key==='translateThreshold' && value<8){
-        console.log('')
+    if (key === 'translateThreshold' && value < 7) {
+        console.log('暂时不支持翻译长度小于7的N站弹幕')
+        return;
     }
     window.setting[key] = value
     saveConfig()
@@ -89,7 +92,7 @@ let defaultConfig = {
     danmuRate: 3.1,
     nicoDanmuRate: 1,
     translateNicoComment: true,
-    translateThreshold:7,
+    translateThreshold: 7,
     replaceKatakana: true,
     bindedCid: {},
     uidFilter: -1,
@@ -2210,7 +2213,6 @@ async function localServer(order, argv) {
     return res
 }
 
-let hasProxy = false
 
 function genNicoAPIBody(lthread, duration, isOwnerThreadReverse = false) {
     let body = [{
@@ -2385,16 +2387,21 @@ function parseNicoResponse(sdanmu, startIndex = 0) {
 }
 
 async function nicoDanmu(nicoid) {
-    if (hasProxy === false || nicoid.startsWith('so')) {
+    if (window.hasProxy === false || nicoid.startsWith('so')) {
         console.log('Found NicoID:' + nicoid)
-        let nicodanmu = await xhrGet('http://152.32.146.234:800/nico/?nicoid=' + nicoid)
+        let url = 'https://delflare505.win:800/nico/?nicoid=' + nicoid
+        if (setting.translateNicoComment) {
+            url += '&translate=1'
+        }
+        url += '&niconum=' + 1000
+        if (setting.translateThreshold) {
+            url += '&translateThreshold=' + setting.translateThreshold
+        }
+        let nicodanmu = await xhrGet(url)
         if (nicodanmu === null) {
             return []
         }
         let ldanmu = parseNicoResponse(nicodanmu)
-        if (setting.translateNicoComment) {
-            ldanmu = await translateNico(ldanmu)
-        }
         if (setting.replaceKatakana) {
             ldanmu = replaceKatakana((ldanmu))
         }
@@ -2732,8 +2739,7 @@ function findAll(reg, text) {
 
 async function translateBaidu(query) {
 
-    let appid = '20190602000304141';
-    let key = 'BHZLmfgU_oxXsyDZ2SEi';
+
     let salt = '000000';
 // 多个query可以用\n连接  如 query='apple\norange\nbanana\npear'
     let from = 'auto';
@@ -2839,13 +2845,15 @@ async function translateNico(ldanmu) {
         let danmu = ldanmu[idanmu]
         let content = danmu.content
         if (content.indexOf('\n') !== -1) continue
-        if (len(content) < 7) continue
+        if (len(content) <= window.setting.translateThreshold) continue
         danmu.content = danmu.content.replace(/(.{1,3})\1{2,}$/, '$1$1')
-        if (len(content) > 7) {
+        if (len(content) <= window.setting.translateThreshold) {
+            if (window.setting.replaceKatakana) {
+                ldanmu[idanmu].content = katakana(content)
+            }
+        } else {
             ltrans.push(content)
             lid.push(danmu.id)
-        } else {
-            ldanmu[idanmu].content = katakana(content)
         }
     }
     let query = '\n'.join(ltrans)
@@ -3103,7 +3111,7 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
         url += '&niconum=' + Math.floor(ndanmu * setting.nicoDanmuRate)
     }
     if (setting.translateThreshold) {
-        url += '&translateThreshold=' +setting.translateThreshold
+        url += '&translateThreshold=' + setting.translateThreshold
     }
     let xhrResponse = await xhrGet(url, null, null, 0, true)
     let nicoDanmu = xhrResponse.responseText
