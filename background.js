@@ -25,8 +25,8 @@ async function loadConfig() {
         }
 
     } else initConfig()
-    // window.hasProxy = ((await xhrGet('https://anime.nicovideo.jp/free/?from=nanime_side')) !== null)
-    window.hasProxy = true
+    window.hasProxy = ((await xhrGet('https://anime.nicovideo.jp/free/?from=nanime_side')) !== null)
+    // window.hasProxy = true
     help()
 
     // console.log(defaultConfig)
