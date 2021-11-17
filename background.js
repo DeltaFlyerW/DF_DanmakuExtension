@@ -1645,7 +1645,7 @@ function applyOffset(ldanmu, offset) {
     })
     for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
         if ((ioffset + 1) < len(loffset) &&
-            (ldanmu[idanmu].progress + loffset[ioffset][1] >= loffset[ioffset + 1][0])
+            (ldanmu[idanmu].progress/1000 + loffset[ioffset][1] >= loffset[ioffset + 1][0])
         ) {
             ioffset += 1
         }
@@ -2362,7 +2362,7 @@ function getStringWidth(str) {
     return totalLength;
 }
 
-function resolveNicoDanmu(lNicoCommendObject, startIndex) {
+function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
     let lNicoScript = []
     let lres = []
     for (let i = 0; i < lNicoCommendObject.length; i++) {
@@ -3174,7 +3174,7 @@ async function dmFengBangumi(sn) {
     return lsn
 }
 
-async function dmFengDanmaku(sn, startIndex) {
+async function dmFengDanmaku(sn, startIndex = 0) {
     let sdanmu = await xhrPost({
         mode: 'urlEncode',
         data: {'sn': parseInt(sn)},
@@ -3200,7 +3200,7 @@ async function dmFengDanmaku(sn, startIndex) {
             {
                 color: parseInt(danmu['color'].slice(1), 16),
                 content: xmlunEscape(danmu["text"]),
-                ctime: 0,
+                ctime: 10,
                 fontsize: sizeDict[danmu["size"]],
                 id: count,
                 idStr: count.toString(),
@@ -3266,7 +3266,7 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     for (let cid of lsn) {
         if (cid['chatserver'] === 'ani.gamer.com.tw') {
             let res = await dmFengDanmaku(cid['ss'])
-            console.log('load:' + cid + '(', len(res), ')')
+            console.log('load ss' + cid['ss'] + '(', len(res), ')')
             ldanmu = ldanmu.concat(res)
         } else if (cid instanceof Array) {
             for (let dcid of cid[ipage]) {
