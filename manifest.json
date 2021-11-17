@@ -1,7 +1,7 @@
 {
   "name": "DF的弹幕扩展",
-  "version": "2.0.0",
-  "description": "该扩展程序致力于改善您的弹幕体验XD",
+  "version": "2.0.1",
+  "description": "该扩展程序致力于改善弹幕体验XD",
   "author": "DeltaFlyer",
   "permissions": [
     "*://*.baidu.com/*",

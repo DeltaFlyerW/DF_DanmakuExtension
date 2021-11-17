@@ -25,8 +25,9 @@ async function loadConfig() {
         }
 
     } else initConfig()
-    window.hasProxy = ((await xhrGet('https://anime.nicovideo.jp/free/?from=nanime_side')) !== null)
+    // window.hasProxy = ((await xhrGet('https://anime.nicovideo.jp/free/?from=nanime_side')) !== null)
     // window.hasProxy = true
+    window.hasProxy = false
     help()
 
     // console.log(defaultConfig)
@@ -92,6 +93,7 @@ let defaultConfig = {
     danmuRate: 3.1,
     nicoDanmuRate: 1,
     loadNicoComment: true,
+    loadNicoScript: true,
     translateNicoComment: true,
     translateThreshold: 7,
     replaceKatakana: true,
@@ -2298,15 +2300,8 @@ function genNicoAPIBody(lthread, duration, isOwnerThreadReverse = false) {
     return body
 }
 
-function parseNicoResponse(sdanmu, startIndex = 0) {
+function parseNicoServerResponse(sdanmu, startIndex = 0) {
     let ldanmu
-    let dColor = {
-        'red': 16711680, 'pink': 16744576, 'orange': 16763904, 'yellow': 16776960, 'green': 65280, 'cyan': 65535,
-        'blue': 255, 'purple': 12583167, 'black': 0, 'niconicowhite': 13421721, 'white2': 13421721,
-        'truered': 13369395, 'red2': 13369395, 'pink2': 16724940, 'passionorange': 16737792, 'orange2': 16737792,
-        'madyellow': 10066176, 'yellow2': 10066176, 'elementalgreen': 52326, 'green2': 52326, 'cyan2': 52428,
-        'marineblue': 3381759, 'blue2': 3381759, 'nobleviolet': 6697932, 'purple2': 6697932, 'black2': 6710886
-    }
     if (sdanmu[0] === '<') {
         ldanmu = sdanmu.split('</d><d p=');
 
@@ -2337,20 +2332,108 @@ function parseNicoResponse(sdanmu, startIndex = 0) {
         return ldanmu
     } else {
         ldanmu = sdanmu.split('\n')
+        let lNicoCommendObject = []
         for (let i = 0; i < ldanmu.length; i++) {
-            let danmu = ldanmu[i]
-            let [argv, command, content] = danmu.split('""')
-            content = JSON.parse('"' + content + '"')
+            let [argv, command, content] = ldanmu[i].split('""')
+            let [vpos, date] = argv.split(',')
+            lNicoCommendObject.append({
+                date: date,
+                vpos: vpos,
+                mail: JSON.parse('"' + command + '"'),
+                content: JSON.parse('"' + content + '"')
+            })
+        }
+        ldanmu = resolveNicoDanmu(lNicoCommendObject, startIndex)
+        return ldanmu
+    }
+}
+
+function getStringWidth(str) {
+    var totalLength = 0;
+    var list = str.split("");
+    for (var i = 0; i < list.length; i++) {
+        var s = list[i];
+        if (s.match(/[\u0000-\u00ff]/g)) { //半角
+            totalLength += 1;
+        } else if (s.match(/[\u4e00-\u9fa5]/g)) { //中文
+            totalLength += 2;
+        }
+    }
+    return totalLength;
+}
+
+function resolveNicoDanmu(lNicoCommendObject, startIndex) {
+    let lNicoScript = []
+    let lres = []
+    for (let i = 0; i < lNicoCommendObject.length; i++) {
+        let content = lNicoCommendObject[i]['content']
+        if (content.indexOf('@置換') !== -1) {
+            let script = {
+                'nico': lNicoCommendObject[i],
+                'type': 'replace',
+            }
+            let argv = content.slice(5, content.length - 1).split('" "')
+            script['src'] = argv[0]
+            script['dest'] = argv[1]
+            for (let option of argv.slice(2)) {
+                if (option === '全') {
+                    script['replaceAll'] = true
+                } else if (option === '含む') {
+                    script['includePoster'] = true
+                } else if (option === '完全一致') {
+                    script['exactMatch'] = true
+                }
+            }
+            lNicoScript.append(script)
+        } else {
+            lres.append(lNicoCommendObject[i])
+        }
+    }
+    let ldanmu = []
+
+    let dColor = {
+        'red': 16711680, 'pink': 16744576, 'orange': 16763904, 'yellow': 16776960, 'green': 65280, 'cyan': 65535,
+        'blue': 255, 'purple': 12583167, 'black': 0, 'niconicowhite': 13421721, 'white2': 13421721,
+        'truered': 13369395, 'red2': 13369395, 'pink2': 16724940, 'passionorange': 16737792, 'orange2': 16737792,
+        'madyellow': 10066176, 'yellow2': 10066176, 'elementalgreen': 52326, 'green2': 52326, 'cyan2': 52428,
+        'marineblue': 3381759, 'blue2': 3381759, 'nobleviolet': 6697932, 'purple2': 6697932, 'black2': 6710886
+    }
+    let dFontRatio = {
+        30: 16,
+        25: 26,
+        20: 39,
+        32.5: 9,
+        27.5: 14,
+        22.5: 21,
+    }
+    for (let i = 0; i < lres.length; i++) {
+        let danmu = lres[i]
+        try {
+            let ctime = danmu['date'], progress = danmu['vpos'] * 10, content = danmu['content'],
+                command = danmu['mail'], isReplaced = false
+            for (let script of lNicoScript) {
+                if (script['type'] === 'replace') {
+                    if ((script['exactMatch'] && content === script['src']) || (!script['exactMatch'] && content.indexOf(script['src']) !== -1)) {
+                        isReplaced = true
+                        command = script['nico']['mail']
+                        if (script['replaceAll']) {
+                            content = script['dest']
+                        } else {
+                            content = content.replace(script['src'], script['dest'])
+                        }
+                    }
+                }
+            }
             let lcommand = null
-            let [progress, ctime] = argv.split(',')
             let danmuType = 1
             let fontSize = 25
             let color = 0xffffff
-            let isBasDanmu = danmu["content"].find("\n") !== -1;
+            let isBasDanmu = content.find("\n") !== -1;
             if (len(command) > 0) {
-                lcommand = JSON.parse('"' + command + '"').split(',')
+                lcommand = JSON.parse('"' + command + '"').split(' ')
                 for (let command of lcommand) {
-                    if (command === 'ue')
+                    if (len(command) < 2) {
+                    } else if (command === 'ue')
                         danmuType = 5
                     else if (command === 'shita')
                         danmuType = 4
@@ -2367,54 +2450,53 @@ function parseNicoResponse(sdanmu, startIndex = 0) {
                         }
                     else if (command[0] === "@" || command === 'migi' || command === 'hidari') {
                         isBasDanmu = true
-                    } else if (command === 'naka' || command === 'white' || command === '184' || command === 'medium'
-                        || command === 'middle' || command === 'docomo' || command.startsWith('device')) {
-                    } else {
-                        console.log('Unknown mail', command)
                     }
                 }
             }
             if (!isBasDanmu) {
-                ldanmu[i] = {
-                    color: color,
-                    content: content,
-                    ctime: ctime,
-                    fontsize: fontSize,
-                    id: i + startIndex,
-                    idStr: str(i + startIndex),
-                    midHash: 'niconico',
-                    mode: danmuType,
-                    progress: progress * 10,
-                    weight: 10
-                }
+                ldanmu.append({
+                        nico: danmu,
+                        color: color,
+                        content: content,
+                        ctime: ctime,
+                        fontsize: fontSize,
+                        id: i + startIndex,
+                        idStr: str(i + startIndex),
+                        midHash: 'niconico',
+                        mode: danmuType,
+                        progress: progress,
+                        weight: 10
+                    }
+                )
             } else {
+                content = content.replace(/\t/g, '    ')
                 let argv = {
-                    "content": JSON.stringify(danmu["content"]),
+                    "content": JSON.stringify(content),
                     "anchorX": "0.5",
                     "x": "100%",
-                    "color": color.toString(16),
-                    "strokeWidth": 1,
-                    "strokeColor": 0x101010,
-                    'bold': 1,
+                    "color": '0x' + color.toString(16),
+                    "zIndex": i,
                 };
-                if (Number(argv['color'].slice(2, 4)) + argv['color'].slice(4, 6) + argv['color'].slice(6, 8) < 100) {
-                    argv["strokeColor"] = 0xe0e0e0
+
+                if ((Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
+                    + Number(argv['color'].slice(6, 8))) < 40) {
+                    argv['strokeWidth'] = 1
+                    argv['strokeColor'] = '0x888888'
                 }
-                let hasEnder = false;
-                let danmuDuration = "4s";
+                let danmuDuration = 4;
                 if (lcommand !== null) {
-                    for (let _pj_c = 0, _pj_a = lcommand, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
+                    for (_pj_c = 0, _pj_a = lcommand, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
                         command = _pj_a[_pj_c];
                         if (command.length === 0) {
 
-                        } else if (command.startswith("@")) {
-                            danmuDuration = command.slice(1) + "s";
+                        } else if (!isReplaced && command[0] === '@') {
+                            danmuDuration = Number(command.slice(1));
                         } else if (command === ["mincho"]) {
                             argv["fontFamily"] = "Yu Mincho";
                         } else if (command === ["gothic"]) {
                             argv["fontFamily"] = "Yu Gothic";
                         } else if (command === "ender") {
-                            hasEnder = true;
+                            fontSize += 2.5;
                         } else if (command === "invisible") {
                             argv["alpha"] = "0";
                         } else if (command === "migi") {
@@ -2428,44 +2510,57 @@ function parseNicoResponse(sdanmu, startIndex = 0) {
                     argv["anchorY"] = "0";
                     argv["y"] = "0%";
                     argv["x"] = "50%";
-                    argv["duration"] = danmuDuration;
+                    argv["duration"] = danmuDuration + 's';
+                } else if (danmuType === 4) {
+                    argv["anchorY"] = "1";
+                    argv["y"] = "100%";
+                    argv["x"] = "50%";
+                    argv["duration"] = danmuDuration + 's';
                 } else {
-                    if (danmuType === 4) {
-                        argv["anchorY"] = "1";
-                        argv["y"] = "100%";
-                        argv["x"] = "50%";
-                        argv["duration"] = danmuDuration;
-                    }
+                    argv['anchorX'] = 0
                 }
+                let rows = content.split('\n')
+                argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
                 let basBody = ["def text c {\n"];
                 for (let key in argv) {
                     basBody.append(key + '=' + str(argv[key]) + '\n')
                 }
                 basBody.append("}\n");
                 if (danmuType === 1) {
-                    basBody.append("set c {x=0%}" + danmuDuration);
+                    let maxWidth = 0
+                    for (let row of rows) {
+                        let length = getStringWidth(row)
+                        if (length > maxWidth) maxWidth = length
+                    }
+                    maxWidth = maxWidth / dFontRatio[fontSize]
+                    danmuDuration = danmuDuration * (1 + maxWidth)
+                    basBody.append("set c {x=" + ((-maxWidth * 100).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's');
                 }
-                ldanmu[i] = {
+                ldanmu.append({
+                    rows: rows.length,
+                    nico: danmu,
                     color: color,
                     content: basBody.join(''),
                     ctime: ctime,
-                    fontsize: 25,
+                    fontsize: fontSize,
                     id: i + startIndex,
                     idStr: str(i + startIndex),
                     midHash: 'niconico',
                     mode: 9,
-                    progress: progress * 10,
+                    progress: progress,
                     weight: 10
-                }
+                })
             }
+
+        } catch (e) {
+            console.log(e, danmu)
         }
-        return ldanmu
     }
-}
-
-function buildNicoDanmu(danmu) {
-
-
+    // if (window.setting.translateNicoComment) {
+    //     ldanmu = await translateNico(ldanmu)
+    // }
+    ldanmu.nicoScript = lNicoScript
+    return ldanmu
 }
 
 async function nicoDanmu(nicoid, startIndex = 0) {
@@ -2475,6 +2570,9 @@ async function nicoDanmu(nicoid, startIndex = 0) {
         if (setting.translateNicoComment) {
             url += '&translate=1'
         }
+        if (setting.loadNicoScript) {
+            url += '&raw=1'
+        }
         url += '&niconum=' + 1000
         if (setting.translateThreshold) {
             url += '&translateThreshold=' + setting.translateThreshold
@@ -2483,7 +2581,7 @@ async function nicoDanmu(nicoid, startIndex = 0) {
         if (nicodanmu === null) {
             return []
         }
-        let ldanmu = parseNicoResponse(nicodanmu)
+        let ldanmu = parseNicoServerResponse(nicodanmu)
         if (setting.translateNicoComment && setting.replaceKatakana) {
             ldanmu = replaceKatakana((ldanmu))
         }
@@ -2534,196 +2632,7 @@ async function nicoDanmu(nicoid, startIndex = 0) {
                 }
             }
         }
-        let lNicoScript = []
-        let lres = []
-        for (let i = 0; i < res.length; i++) {
-            let content = res[i]['content']
-            if (content.indexOf('@置換') !== -1) {
-                let script = {
-                    'type': 'replace',
-                }
-                let argv = content.slice(5, content.length - 1).split('" "')
-                script['src'] = argv[0]
-                script['dest'] = argv[1]
-                for (let option of argv.slice(2)) {
-                    if (option === '全') {
-                        script['replaceAll'] = true
-                    } else if (option === '含む') {
-                        script['includePoster'] = true
-                    } else if (option === '完全一致') {
-                        script['exactMatch'] = true
-                    }
-                }
-                lNicoScript.append(script)
-            } else {
-                lres.append(res[i])
-            }
-        }
-        let ldanmu = []
-
-
-        let dColor = {
-            'red': 16711680, 'pink': 16744576, 'orange': 16763904, 'yellow': 16776960, 'green': 65280, 'cyan': 65535,
-            'blue': 255, 'purple': 12583167, 'black': 0, 'niconicowhite': 13421721, 'white2': 13421721,
-            'truered': 13369395, 'red2': 13369395, 'pink2': 16724940, 'passionorange': 16737792, 'orange2': 16737792,
-            'madyellow': 10066176, 'yellow2': 10066176, 'elementalgreen': 52326, 'green2': 52326, 'cyan2': 52428,
-            'marineblue': 3381759, 'blue2': 3381759, 'nobleviolet': 6697932, 'purple2': 6697932, 'black2': 6710886
-        }
-        let dFontRatio = {
-            30: 16,
-            25: 26,
-            20: 39,
-            32.5: 9,
-            27.5: 14,
-            22.5: 21,
-        }
-        for (let i = 0; i < lres.length; i++) {
-            try {
-                let danmu = lres[i]
-                let ctime = danmu['date'], progress = danmu['vpos'] * 10, content = danmu['content'],
-                    command = danmu['mail']
-                for (let script of lNicoScript) {
-                    if (script['type'] === 'replace') {
-                        if ((script['exactMatch'] && content === script['src']) || (!script['exactMatch'] && content.indexOf(script['src']) !== -1)) {
-                            if (script['replaceAll']) {
-                                content = script['dest']
-                            } else {
-                                content = content.replace(script['src'], script['dest'])
-                            }
-                        }
-                    }
-                }
-                let lcommand = null
-                let danmuType = 1
-                let fontSize = 25
-                let color = 0xffffff
-                let isBasDanmu = danmu["content"].find("\n") !== -1;
-                if (len(command) > 0) {
-                    lcommand = JSON.parse('"' + command + '"').split(' ')
-                    for (let command of lcommand) {
-                        if (len(command) < 2) {
-                        } else if (command === 'ue')
-                            danmuType = 5
-                        else if (command === 'shita')
-                            danmuType = 4
-                        else if (command === 'big')
-                            fontSize = 30
-                        else if (command === 'small')
-                            fontSize = 20
-                        else if (dColor.hasOwnProperty(command))
-                            color = dColor[command]
-                        else if (command[0] === '#')
-                            try {
-                                color = parseInt(command.slice(1), 16)
-                            } catch (e) {
-                            }
-                        else if (command[0] === "@" || command === 'migi' || command === 'hidari') {
-                            isBasDanmu = true
-                        }
-                    }
-                }
-                if (!isBasDanmu) {
-                    ldanmu.append({
-                            color: color,
-                            content: content,
-                            ctime: ctime,
-                            fontsize: fontSize,
-                            id: i + startIndex,
-                            idStr: str(i + startIndex),
-                            midHash: 'niconico',
-                            mode: danmuType,
-                            progress: progress,
-                            weight: 10
-                        }
-                    )
-                } else {
-                    let argv = {
-                        "content": JSON.stringify(danmu["content"]),
-                        "anchorX": "0.5",
-                        "fontFamaly":'Arial',
-                        "x": "100%",
-                        "color": '0x' + color.toString(16),
-                        "zIndex": i,
-                        "strokeWidth": 1,
-                        "strokeColor": '0x000000',
-                    };
-
-                    if ((Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
-                        + Number(argv['color'].slice(6, 8))) < 100) {
-                        argv['strokeColor'] = '0xeeeeee'
-                    }
-                    if (progress > 238000 && progress < 240000) {
-                        console.log(argv, (Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
-                            + Number(argv['color'].slice(6, 8))))
-                    }
-                    let danmuDuration = "4s";
-                    if (lcommand !== null) {
-                        for (_pj_c = 0, _pj_a = lcommand, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
-                            command = _pj_a[_pj_c];
-                            if (command.length === 0) {
-
-                            } else if (command[0] === '@') {
-                                danmuDuration = command.slice(1) + "s";
-                            } else if (command === ["mincho"]) {
-                                argv["fontFamily"] = "Yu Mincho";
-                            } else if (command === ["gothic"]) {
-                                argv["fontFamily"] = "Yu Gothic";
-                            } else if (command === "ender") {
-                                fontSize += 2.5;
-                            } else if (command === "invisible") {
-                                argv["alpha"] = "0";
-                            } else if (command === "migi") {
-                                argv["anchorX"] = "1";
-                            } else if (command === "hidari") {
-                                argv["anchorX"] = "0";
-                            }
-                        }
-                    }
-                    if (danmuType === 5) {
-                        argv["anchorY"] = "0";
-                        argv["y"] = "0%";
-                        argv["x"] = "50%";
-                        argv["duration"] = danmuDuration;
-                    } else {
-                        if (danmuType === 4) {
-                            argv["anchorY"] = "1";
-                            argv["y"] = "100%";
-                            argv["x"] = "50%";
-                            argv["duration"] = danmuDuration;
-                        }
-                    }
-                    argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(2) + '%'
-                    let basBody = ["def text c {\n"];
-                    for (let key in argv) {
-                        basBody.append(key + '=' + str(argv[key]) + '\n')
-                    }
-                    basBody.append("}\n");
-                    if (danmuType === 1) {
-                        basBody.append("set c {x=0%}" + danmuDuration);
-                    }
-                    ldanmu.append({
-                        nico: danmu,
-                        color: color,
-                        content: basBody.join(''),
-                        ctime: ctime,
-                        fontsize: 25,
-                        id: i + startIndex,
-                        idStr: str(i + startIndex),
-                        midHash: 'niconico',
-                        mode: 9,
-                        progress: progress,
-                        weight: 10
-                    })
-                }
-
-            } catch (e) {
-                console.log(e, danmu)
-            }
-        }
-        // if (window.setting.translateNicoComment) {
-        //     ldanmu = await translateNico(ldanmu)
-        // }
-        return ldanmu
+        return resolveNicoDanmu(res, 0)
     }
 }
 
@@ -3043,7 +2952,9 @@ function katakana(danmu) {
 
 function replaceKatakana(ldanmu) {
     for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
-        ldanmu[idanmu].content = katakana(ldanmu[idanmu].content)
+        if (ldanmu[idanmu].content.find('\n') === -1) {
+            ldanmu[idanmu].content = katakana(ldanmu[idanmu].content)
+        }
     }
     return ldanmu
 }
@@ -3309,6 +3220,17 @@ let outsideFliter = [{
     ]
 }]
 
+async function getBiliVideoDuration(aid, cid) {
+    let pagelist = JSON.parse(await xhrGet('https://api.bilibili.com/x/player/pagelist?aid=' + aid + '&jsonp=jsonp'))
+    let tDuration = null
+    for (let page of pagelist.data) {
+        if (page.cid === cid) {
+            tDuration = page.duration
+        }
+    }
+    return tDuration
+}
+
 async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null) {
     if (setting === null) {
         setting = window.setting
@@ -3330,14 +3252,22 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     }
     let ldanmu = []
     let lsn = JSON.parse(xhrResponse.getResponseHeader('content-type').slice(25))
-
-    for (let cid of lsn) {
-        if (typeof (cid) == 'string') {
+    for (let i = 0; i < lsn.length; i++) {
+        let cid = lsn[i]
+        if (typeof (cid) === 'string') {
             if (cid.startsWith('sn')) {
-                let res = await dmFengDanmaku(cid.slice(2), len(ldanmu))
-                ldanmu = ldanmu.concat(res)
-                console.log('load:' + cid + '(', len(res), ')')
+                lsn[i] = {
+                    chatserver: 'ani.gamer.com.tw',
+                    ss: Number(cid.slice(2))
+                }
             }
+        }
+    }
+    for (let cid of lsn) {
+        if (cid['chatserver'] === 'ani.gamer.com.tw') {
+            let res = await dmFengDanmaku(cid['ss'])
+            console.log('load:' + cid + '(', len(res), ')')
+            ldanmu = ldanmu.concat(res)
         } else if (cid instanceof Array) {
             for (let dcid of cid[ipage]) {
                 ldanmu = ldanmu.concat((await moreFiltedHistory(dcid, duration))[0])
@@ -3345,7 +3275,7 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
         }
     }
     if (nicoDanmu[0] !== 's') {
-        let res = parseNicoResponse(nicoDanmu, len(ldanmu))
+        let res = parseNicoServerResponse(nicoDanmu, len(ldanmu))
         if (setting.replaceKatakana) {
             res = replaceKatakana(res)
         }
@@ -3354,22 +3284,21 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     }
     ldanmu = await danmuFilter(ldanmu, outsideFliter)
     for (let sn of lsn) {
-        if (sn.hasOwnProperty('ss')) {
+        if (sn.chatserver === 'chat.bilibili.com') {
             let res = []
-            let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + sn.ss.slice(2)))
+            let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + sn.ss))
             let cid = data.result.main_section.episodes[ipage].cid
             let aid = data.result.main_section.episodes[ipage].aid
             if (sn.hasOwnProperty('offset')) {
                 res = (await moreFiltedHistory(cid, duration))[0]
-                res = applyOffset(res, sn.offset)
-            } else {
-                let pagelist = JSON.parse(await xhrGet('https://api.bilibili.com/x/player/pagelist?aid=' + aid + '&jsonp=jsonp'))
-                let tDuration = null
-                for (let page of pagelist.data) {
-                    if (page.cid === cid) {
-                        tDuration = page.duration
-                    }
+                if (sn.offset !== 'ignore') {
+                    res = applyOffset(res, sn.offset)
+                } else {
+                    let tDuration = await getBiliVideoDuration(aid, cid)
+                    res = applyOffset(res, [[0, duration - tDuration]])
                 }
+            } else {
+                let tDuration = await getBiliVideoDuration(aid, cid)
                 if (Math.abs(duration - tDuration) < 2) {
                     res = (await moreFiltedHistory(cid, duration))[0]
                 }
