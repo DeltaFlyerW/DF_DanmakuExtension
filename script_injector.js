@@ -63,16 +63,6 @@ if (document.head) {
 
         let duration = null
         while (true) {
-            // let playerInfo = document.querySelector("body > script:nth-child(8)")
-            // if (playerInfo !== null) {
-            //     duration = /"timelength":(\d+),"/.exec(playerInfo.textContent)
-            //     if (duration !== null) {
-            //         duration = parseInt(duration[1]) / 1000
-            //     } else {
-            //         console.log(playerInfo.textContent)
-            //         duration = parseInt(/"duration":(\d+),"/.exec(playerInfo.textContent)[1])
-            //     }
-            // } else {
             duration = document.querySelector('span[class="bilibili-player-video-time-total"]')
             if (duration == null) {
                 duration = document.querySelector('span[class="squirtle-video-time-total"]')
@@ -116,9 +106,9 @@ if (document.head) {
                     }
                 }
             }
-
         }
-        lastHref = window.location.href
+        let expectDanmuNum =
+            lastHref = window.location.href
         lastDesc = [aid, youtubeUrl, nicoinfo, duration, ssid, ipage]
         return [aid, youtubeUrl, nicoinfo, duration, ssid, ipage]
     }
@@ -128,7 +118,6 @@ if (document.head) {
 
 
     window.addEventListener("message", async function (event) {
-            console.log("pakku ajax: injecting hook");
 
             if (event.source !== window) return;
             if (event.data) {
@@ -146,6 +135,14 @@ if (document.head) {
                     }
 
                     let [aid, youtubeUrl, nicoinfo, duration, ssid, ipage] = await getDescInfo(cid)
+                    let ondanmu = document.querySelector('span[class="bilibili-player-video-info-danmaku-number"]')
+                    if (!ondanmu) {
+                        ondanmu = document.querySelector('span[class="bpx-player-video-info-dm-number"]')
+                    }
+                    let expectedDanmuNum=0
+                    if (ondanmu !== null) {
+                        expectedDanmuNum = Number(ondanmu.textContent)
+                    }
                     chrome.runtime.sendMessage({
                         type: "ajax_hook",
                         url: event.data.arg,
@@ -157,7 +154,8 @@ if (document.head) {
                         youtubeUrl: youtubeUrl,
                         ssid: ssid,
                         ipage: ipage,
-                        block: JSON.parse(localStorage.bilibili_player_settings).block
+                        block: JSON.parse(localStorage.bilibili_player_settings).block,
+                        expectedDanmuNum: expectedDanmuNum
                     });
 
                     await new Promise(resolve => {
@@ -168,21 +166,6 @@ if (document.head) {
                             if (resp.data !== null) {
                                 console.log('GotDanmuFromDFex', resp.ndanmu)
                                 if (skipCid !== cid) {
-                                    let s = '<div class="bilibili-player-video-info">\n' +
-                                        '                    <div class="bilibili-player-video-info-people">\n' +
-                                        '                        <span class="bilibili-player-video-info-people-number">6088</span>\n' +
-                                        '                        <span class="bilibili-player-video-info-people-text">人正在看</span>\n' +
-                                        '                    </div>\n' +
-                                        '                    <div class="bilibili-player-video-info-danmaku player-tooltips-trigger" data-text="当前弹幕池弹幕数1312条" data-tooltip="1" data-position="top-center" data-change-mode="0">\n' +
-                                        '                        <span>，</span>\n' +
-                                        '                        <span class="bilibili-player-video-info-danmaku-number">1312</span>\n' +
-                                        '                        <span class="bilibili-player-video-info-danmaku-text">条弹幕</span>\n' +
-                                        '                    </div>\n' +
-                                        '                </div>'
-                                    let ondanmu = document.querySelector('span[class="bilibili-player-video-info-danmaku-number"]')
-                                    if (!ondanmu) {
-                                        ondanmu = document.querySelector('span[class="bpx-player-video-info-dm-number"]')
-                                    }
                                     if (ondanmu !== null) {
                                         if (Number(ondanmu.textContent) > resp.ndanmu) {
                                             console.log('Abort Redirect due to less danmu for cid', cid)

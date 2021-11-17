@@ -1374,14 +1374,14 @@ let DANMU_URL_FILTER = ['*://comment.bilibili.com/*', '*://api.bilibili.com/x/v1
 var proto_seg = protobuf.roots.default.bilibili.community.service.dm.v1.DmSegMobileReply;
 var LOG_PROTO = false;
 
-async function ldanmu_to_proto_seg(ldanmu, segIndex, cid, ndanmu) {
+function ldanmu_to_proto_seg(ldanmu, segIndex) {
     let res = [];
-    if (ndanmu * window.setting.danmuRate > len(ldanmu)) {
-        ldanmu = mergeDanmu(ldanmu,
-            await danmuFilter(await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
-                + cid + '&segment_index=' + segIndex))
-        )
-    }
+    // if (ndanmu * window.setting.danmuRate > len(ldanmu)) {
+    //     ldanmu = mergeDanmu(ldanmu,
+    //         await danmuFilter(await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
+    //             + cid + '&segment_index=' + segIndex))
+    //     )
+    // }
 
     for (sdanmu of ldanmu) {
         if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
@@ -1645,7 +1645,7 @@ function applyOffset(ldanmu, offset) {
     })
     for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
         if ((ioffset + 1) < len(loffset) &&
-            (ldanmu[idanmu].progress/1000 + loffset[ioffset][1] >= loffset[ioffset + 1][0])
+            (ldanmu[idanmu].progress / 1000 + loffset[ioffset][1] >= loffset[ioffset + 1][0])
         ) {
             ioffset += 1
         }
@@ -1654,12 +1654,11 @@ function applyOffset(ldanmu, offset) {
     return ldanmu
 }
 
-async function moreFiltedHistory(cid, duration) {
+async function moreFiltedHistory(cid, duration, existNdanmu = 0, expectedDanmuNum = 0) {
     let date = new Date();
     date.setTime(date.getTime() - 86400000)
     console.log('GetDanmuFor CID' + cid)
     let aldanmu = [], lfiltedDanmu = [], ldanmu = []
-    let firstdate = 0;
     let ndanmu, ondanmu
     let url = 'https://comment.bilibili.com/' + cid + '.xml'
     let sdanmu = null
@@ -1689,18 +1688,17 @@ async function moreFiltedHistory(cid, duration) {
         aldanmu = mergeDanmu(aldanmu, oldanmu)
         lfiltedDanmu = mergeDanmu(lfiltedDanmu, await danmuFilter(oldanmu))
         if (!isStart && ldanmu.length < Math.min(ondanmu, 5000) * 0.9) {
-            return [aldanmu, ondanmu]
+            return [aldanmu, ondanmu, len(aldanmu)]
         }
         if (!isStart && lfiltedDanmu.length > ndanmu * setting.danmuRate) {
-            return [aldanmu, ondanmu]
+            return [lfiltedDanmu, ondanmu, len(aldanmu)]
         }
         ldanmu = await sdanmu
         if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
-            let tfirstdate = getMinDate(ldanmu)
-            if (firstdate !== 0 && firstdate - tfirstdate < 86400)
-                tfirstdate = firstdate - 86400;
-            firstdate = tfirstdate;
-            date.setTime(firstdate * 1000);
+            let firstdate = getMinDate(ldanmu) * 1000
+            if (date.getTime() - firstdate < 86400000)
+                firstdate = date.getTime() - 86400000;
+            date.setTime(firstdate);
         }
         if (isStart) {
             isStart = false
@@ -1753,6 +1751,25 @@ async function moreHistory(cid, duration) {
     }
 }
 
+async function allProtobufDanmu(cid, duration) {
+    let segIndex = 0, aldanmu = []
+    while (true) {
+        segIndex += 1
+
+        let tldanmu = await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
+            + cid + '&segment_index=' + segIndex)
+        if (len(tldanmu) === 0) {
+            break
+        }
+        tldanmu = colorFilter(tldanmu)
+        tldanmu = await danmuFilter(tldanmu)
+        mergeDanmu(aldanmu, tldanmu)
+        if (segIndex * 360 > duration) {
+            break
+        }
+    }
+    return aldanmu
+}
 
 async function loadProtoDanmu(url, timeout = null, header = null, retry = 0) {
     const xhr = new XMLHttpRequest();
@@ -3231,7 +3248,7 @@ async function getBiliVideoDuration(aid, cid) {
     return tDuration
 }
 
-async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null) {
+async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null, existDanmuNum = 0) {
     if (setting === null) {
         setting = window.setting
     }
@@ -3290,16 +3307,16 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
             let cid = data.result.main_section.episodes[ipage].cid
             let aid = data.result.main_section.episodes[ipage].aid
             if (sn.hasOwnProperty('offset')) {
-                res = (await moreFiltedHistory(cid, duration))[0]
+                res = (await moreFiltedHistory(cid, duration, existDanmuNum + len(ldanmu)))[0]
                 if (sn.offset !== 'ignore') {
                     res = applyOffset(res, sn.offset)
                 } else {
-                    let tDuration = await getBiliVideoDuration(aid, cid)
+                    let tDuration = await getBiliVideoDuration(aid, cid)-1
                     res = applyOffset(res, [[0, duration - tDuration]])
                 }
             } else {
-                let tDuration = await getBiliVideoDuration(aid, cid)
-                if (Math.abs(duration - tDuration) < 2) {
+                let tDuration = await getBiliVideoDuration(aid, cid)-1
+                if (Math.abs(duration - tDuration) < 3) {
                     res = (await moreFiltedHistory(cid, duration))[0]
                 }
             }
@@ -3759,11 +3776,15 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     if (window.setting.filterRule.length === 0) {
                         ret = await moreHistory(cid, request.duration)
                     } else {
-                        ret = await moreFiltedHistory(cid, request.duration)
+                        ret = await moreFiltedHistory(cid, request.duration, 0)
                     }
+
                     // inject_panel(tabid)
                     ldanmu = ret[0]
                     ndanmu = ret[1]
+                    if (ret[2] < request.expectedDanmuNum) {
+                        mergeDanmu(ldanmu, await allProtobufDanmu(cid, request.duration))
+                    }
                     console.log('ndanmu:' + ldanmu.length + ' from history')
                     let peposide = setting.bindedCid[cid]
                     if (peposide !== undefined) {
@@ -3776,7 +3797,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     }
                     let youtubeUrl = request.youtubeUrl
                     if (request.ssid !== null) {
-                        ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, request.duration, ndanmu))
+                        ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, request.duration, ndanmu, null, len(ldanmu)))
                     }
                     // if (youtubeUrl !== null) {
                     //     console.log('Found YoutubeURL:' + youtubeUrl)
@@ -3805,7 +3826,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     if (segindex === 1) {
                         console.log('total ndanmu:' + ldanmu.length)
                     }
-                    res = await ldanmu_to_proto_seg(ldanmu, segindex, cid, ndanmu)
+                    res = ldanmu_to_proto_seg(ldanmu, segindex, cid, ndanmu)
                     console.log('cid:', cid, 'segindex:', segindex, 'length', res[1])
                     res = res[0]
                 }

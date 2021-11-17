@@ -482,8 +482,10 @@
                 return that.pakku_send(arg);
             }
         } else if (this.pakku_url.indexOf('season?ep_id' )!== -1) {
+            console.log('hook seasonInfo')
             this.pakku_addEventListener('readystatechange', function (s) {
                 if (4 === s.target.readyState) {
+                    console.log('post seasonInfo')
                     window.postMessage({
                         type: 'seasonInfo',
                         arg: s.target.responseText
@@ -491,7 +493,7 @@
                 }
             })
             return this.pakku_send(arg)
-        } else {
+        }else if(this.pakku_url.indexOf('player/v2?ep_id' )!== -1){} else {
 
             return this.pakku_send(arg)
         }
