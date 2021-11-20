@@ -10,7 +10,6 @@ if (document.head) {
     let lastDesc = null
 
     async function getDescInfo(cid) {
-        if (!document.querySelector('div[id="bilibili-player"]')) return
 
         if (window.location.href === lastHref) {
             return lastDesc
@@ -61,27 +60,6 @@ if (document.head) {
             console.log('Desc not found')
         }
 
-        let duration = null
-        while (true) {
-            duration = document.querySelector('span[class="bilibili-player-video-time-total"]')
-            if (duration == null) {
-                duration = document.querySelector('span[class="squirtle-video-time-total"]')
-            }
-            if (duration) {
-                duration = duration.textContent.split(':')
-                if (duration.length === 2) {
-                    duration = 60 * Number(duration[0]) + Number(duration[1])
-                } else {
-                    duration = (60 * Number(duration[0]) + Number(duration[1])) * 60 + Number(duration[2])
-                }
-            }
-            // }
-            if (duration !== null) {
-                break
-            }
-            console.log('duration not found')
-            let res = await sleep(100)
-        }
         // console.log(playerInfo.textContent)
 
 
@@ -107,10 +85,9 @@ if (document.head) {
                 }
             }
         }
-        let expectDanmuNum =
-            lastHref = window.location.href
-        lastDesc = [aid, youtubeUrl, nicoinfo, duration, ssid, ipage]
-        return [aid, youtubeUrl, nicoinfo, duration, ssid, ipage]
+        lastHref = window.location.href
+        lastDesc = [aid, youtubeUrl, nicoinfo, ssid, ipage]
+        return [aid, youtubeUrl, nicoinfo, ssid, ipage]
     }
 
 
@@ -122,73 +99,82 @@ if (document.head) {
             if (event.source !== window) return;
             if (event.data) {
                 if (event.data.type === "pakku_ajax_request") {
+                    try{
+                        let cid = /oid=(\d+)/.exec(event.data.arg)[1]
+                        if (skipCid === cid) {
+                            console.log('Ignore cid', skipCid)
+                            window.postMessage({
+                                type: "pakku_ajax_response",
+                                arg: event.data.arg,
+                                resp: null
+                            }, "*");
+                            return
+                        }
+                        let res = await getDescInfo(cid)
+                        let aid, youtubeUrl, nicoinfo, ssid, ipage
+                        [aid, youtubeUrl, nicoinfo, ssid, ipage] = res
+                        let ondanmu = document.querySelector('span[class="bilibili-player-video-info-danmaku-number"]')
+                        if (!ondanmu) {
+                            ondanmu = document.querySelector('span[class="bpx-player-video-info-dm-number"]')
+                        }
+                        let expectedDanmuNum = 0
+                        if (ondanmu !== null) {
+                            expectedDanmuNum = Number(ondanmu.textContent)
+                        }
+                        chrome.runtime.sendMessage({
+                            type: "ajax_hook",
+                            url: event.data.arg,
+                            aid: aid,
+                            cid: cid,
+                            href: window.location.href,
+                            nicoinfo: nicoinfo,
+                            youtubeUrl: youtubeUrl,
+                            ssid: ssid,
+                            ipage: ipage,
+                            block: JSON.parse(localStorage.bilibili_player_settings).block,
+                            expectedDanmuNum: expectedDanmuNum
+                        });
 
-                    let cid = /oid=(\d+)/.exec(event.data.arg)[1]
-                    if (skipCid === cid) {
-                        console.log('Ignore cid', skipCid)
+                        await new Promise(resolve => {
+                            function handle(resp, sender, sendResponse) {
+                                if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55))
+                                    return;
+                                chrome.runtime.onMessage.removeListener(handle)
+                                if (resp.data !== null) {
+                                    console.log('GotDanmuFromDFex', resp.ndanmu)
+                                    if (skipCid !== cid) {
+                                        if (ondanmu !== null) {
+                                            if (Number(ondanmu.textContent) > resp.ndanmu) {
+                                                console.log('Abort Redirect due to less danmu for cid', cid)
+                                                skipCid = cid
+                                                // resp.data = null
+                                            } else {
+                                                ondanmu.textContent = resp.ndanmu.toString()
+
+                                            }
+                                        }
+                                    }
+                                }
+                                window.postMessage({
+                                    type: "pakku_ajax_response",
+                                    arg: event.data.arg,
+                                    resp: resp
+                                }, "*");
+                                resolve()
+                            }
+
+                            chrome.runtime.onMessage.addListener(handle)
+
+                        })
+                    }catch (e) {
+                        console.log(e)
                         window.postMessage({
                             type: "pakku_ajax_response",
                             arg: event.data.arg,
                             resp: null
                         }, "*");
-                        return
                     }
 
-                    let [aid, youtubeUrl, nicoinfo, duration, ssid, ipage] = await getDescInfo(cid)
-                    let ondanmu = document.querySelector('span[class="bilibili-player-video-info-danmaku-number"]')
-                    if (!ondanmu) {
-                        ondanmu = document.querySelector('span[class="bpx-player-video-info-dm-number"]')
-                    }
-                    let expectedDanmuNum=0
-                    if (ondanmu !== null) {
-                        expectedDanmuNum = Number(ondanmu.textContent)
-                    }
-                    chrome.runtime.sendMessage({
-                        type: "ajax_hook",
-                        url: event.data.arg,
-                        aid: aid,
-                        cid: cid,
-                        href: window.location.href,
-                        duration: duration,
-                        nicoinfo: nicoinfo,
-                        youtubeUrl: youtubeUrl,
-                        ssid: ssid,
-                        ipage: ipage,
-                        block: JSON.parse(localStorage.bilibili_player_settings).block,
-                        expectedDanmuNum: expectedDanmuNum
-                    });
-
-                    await new Promise(resolve => {
-                        function handle(resp, sender, sendResponse) {
-                            if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55))
-                                return;
-                            chrome.runtime.onMessage.removeListener(handle)
-                            if (resp.data !== null) {
-                                console.log('GotDanmuFromDFex', resp.ndanmu)
-                                if (skipCid !== cid) {
-                                    if (ondanmu !== null) {
-                                        if (Number(ondanmu.textContent) > resp.ndanmu) {
-                                            console.log('Abort Redirect due to less danmu for cid', cid)
-                                            skipCid = cid
-                                            // resp.data = null
-                                        } else {
-                                            ondanmu.textContent = resp.ndanmu.toString()
-
-                                        }
-                                    }
-                                }
-                            }
-                            window.postMessage({
-                                type: "pakku_ajax_response",
-                                arg: event.data.arg,
-                                resp: resp
-                            }, "*");
-                            resolve()
-                        }
-
-                        chrome.runtime.onMessage.addListener(handle)
-
-                    })
 
 
                 } else if (event.data.type === 'seasonInfo') {

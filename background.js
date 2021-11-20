@@ -1662,7 +1662,7 @@ async function moreFiltedHistory(cid, duration, existNdanmu = 0, expectedDanmuNu
         sdanmu = await xhrGet(url)
     }
     ondanmu = ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
-    if (ndanmu === 8000) {
+    if (ndanmu === 8000 && duration !== null) {
         ndanmu = parseInt((duration / 24 / 60) * 3000)
     }
 
@@ -2443,6 +2443,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
             let fontSize = 25
             let color = 0xffffff
             let isBasDanmu = content.find("\n") !== -1;
+            let duration = 4
             if (len(command) > 0) {
                 lcommand = JSON.parse('"' + command + '"').split(' ')
                 for (let command of lcommand) {
@@ -2462,49 +2463,63 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                             color = parseInt(command.slice(1), 16)
                         } catch (e) {
                         }
-                    else if (command[0] === "@" || command === 'migi' || command === 'hidari') {
+                    else if (command[0] === "@") {
+                        duration = Number(command.slice(1))
+                        isBasDanmu = true
+                    } else if (command === 'migi' || command === 'hidari') {
                         isBasDanmu = true
                     }
                 }
             }
-            if (!isBasDanmu) {
-                ldanmu.append({
-                        nico: danmu,
-                        color: color,
-                        content: content,
-                        ctime: ctime,
-                        fontsize: fontSize,
-                        id: i + startIndex,
-                        idStr: str(i + startIndex),
-                        midHash: 'niconico',
-                        mode: danmuType,
-                        progress: progress,
-                        weight: 10
-                    }
-                )
+            danmu = {
+                nico: danmu,
+                color: color,
+                content: content,
+                ctime: ctime,
+                fontsize: fontSize,
+                id: i + startIndex,
+                idStr: str(i + startIndex),
+                midHash: 'niconico',
+                mode: danmuType,
+                progress: progress,
+                weight: 10
+            }
+            if (isBasDanmu) {
+                danmu.nico.duration = duration
+                lBasDanmu.append(danmu)
             } else {
-                content = content.replace(/\t/g, '    ')
-                let argv = {
-                    "content": JSON.stringify(content),
-                    "anchorX": "0.5",
-                    "x": "100%",
-                    "color": '0x' + color.toString(16),
-                    "zIndex": i,
-                };
+                ldanmu.append(danmu)
+            }
+        } catch (e) {
+            console.log(e)
+        }
+    }
 
-                if ((Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
-                    + Number(argv['color'].slice(6, 8))) < 40) {
-                    argv['strokeWidth'] = 1
-                    argv['strokeColor'] = '0x888888'
-                }
-                let danmuDuration = 4;
+    lBasDanmu.sort(function (a, b) {
+        return [a.progress - b.progress, a.mode - b.mode]
+    })
+    let rowCount = 0
+    for (let i = 0; i < lBasDanmu.length; i++) {
+        let danmu = lBasDanmu[i]
+        try {
+            let argv = {
+                "anchorX": "0.5",
+                "x": "100%",
+                "color": '0x' + danmu.color.toString(16),
+                "zIndex": i,
+            };
+            let fontSize = danmu.fontsize, danmuType = danmu.mode, color = danmu.color
+            if ((Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
+                + Number(argv['color'].slice(6, 8))) < 40) {
+                argv['strokeWidth'] = 1
+                argv['strokeColor'] = '0x888888'
+            }
+            if (len(danmu.nico.mail) > 0) {
+                let lcommand = JSON.parse('"' + danmu.nico.mail + '"').split(' ')
                 if (lcommand !== null) {
                     for (_pj_c = 0, _pj_a = lcommand, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
                         command = _pj_a[_pj_c];
                         if (command.length === 0) {
-
-                        } else if (!isReplaced && command[0] === '@') {
-                            danmuDuration = Number(command.slice(1));
                         } else if (command === ["mincho"]) {
                             argv["fontFamily"] = "Yu Mincho";
                         } else if (command === ["gothic"]) {
@@ -2520,69 +2535,82 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                         }
                     }
                 }
-                if (danmuType === 5) {
-                    argv["anchorY"] = "0";
-                    argv["y"] = "0%";
-                    argv["x"] = "50%";
-                    argv["duration"] = danmuDuration + 's';
-                } else if (danmuType === 4) {
-                    argv["anchorY"] = "1";
-                    argv["y"] = "100%";
-                    argv["x"] = "50%";
-                    argv["duration"] = danmuDuration + 's';
-                } else {
-                    argv['anchorX'] = 0
-                }
-                let rows = content.split('\n')
-                argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
-                if (len(rows) > 45) {
-                    argv['fontSize'] = (100 / (len(rows) * 2)).toFixed(5) + '%'
-                    console.log(danmu.content)
-                    console.log('Unknown fontsize', len(rows), danmu)
-                }
-                let basBody = ["def text c" + i + " {\n"];
-                for (let key in argv) {
-                    basBody.append(key + '=' + str(argv[key]) + '\n')
-                }
-                basBody.append("}\n");
-                if (danmuType === 1) {
-                    let maxWidth = 0
-                    for (let row of rows) {
-                        let length = getStringWidth(row)
-                        if (length > maxWidth) maxWidth = length
-                    }
-                    maxWidth = maxWidth / dFontRatio[fontSize]
-                    danmuDuration = danmuDuration * (1 + maxWidth)
-                    basBody.append("set c" + i + " {x=" + ((-maxWidth * 100).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's\n');
-                }
-                danmu['duration'] = 4
-                lBasDanmu.append({
-                    rows: rows.length,
-                    nico: [danmu],
-                    color: color,
-                    content: basBody.join(''),
-                    ctime: ctime,
-                    fontsize: fontSize,
-                    id: i + startIndex,
-                    idStr: str(i + startIndex),
-                    midHash: 'niconico',
-                    mode: 9,
-                    progress: progress,
-                    weight: 10
-                })
             }
-
-        } catch (e) {
+            let content = danmu.content.replace(/\t/g, '    ')
+            let rows = content.split('\n')
+            let increaseRow = false
+            if (danmu.mode === 5) {
+                argv["anchorY"] = "0";
+                argv["y"] = "0%";
+                argv["x"] = "50%";
+                argv["duration"] = danmu.nico.duration + 's';
+            } else if (danmu.mode === 4) {
+                argv["anchorY"] = "1";
+                argv["y"] = "100%";
+                argv["x"] = "50%";
+                argv["duration"] = danmu.nico.duration + 's';
+            } else {
+                if (i > 0) {
+                    let lastDanmu = lBasDanmu[i - 1]
+                    if (lastDanmu.mode === 1 && danmu.mode === 1
+                        && danmu.progress === lastDanmu.progress) {
+                        rowCount += lastDanmu.rows
+                        danmu.content = '\n'.repeat(rowCount) + danmu.content
+                        increaseRow = true
+                    }
+                }
+                argv['anchorX'] = 0
+            }
+            if (!increaseRow) {
+                rowCount = 0
+            }
+            argv['content'] = JSON.stringify(content)
+            argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
+            if (len(rows) > 45) {
+                argv['fontSize'] = (100 / (len(rows) * 2)).toFixed(5) + '%'
+                console.log(danmu.content)
+                console.log('Unknown fontsize', len(rows), danmu)
+            }
+            let basBody = ["def text c" + i + " {\n"];
+            for (let key in argv) {
+                basBody.append(key + '=' + str(argv[key]) + '\n')
+            }
+            basBody.append("}\n");
+            if (danmuType === 1) {
+                let maxWidth = 0
+                for (let row of rows) {
+                    let length = getStringWidth(row)
+                    if (length > maxWidth) maxWidth = length
+                }
+                maxWidth = maxWidth / dFontRatio[fontSize]
+                let danmuDuration = danmu.nico.duration
+                danmuDuration = danmuDuration * (1 + maxWidth)
+                basBody.append("set c" + i + " {x=" + ((-maxWidth * 100).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's\n');
+            }
+            danmu['duration'] = 4
+            lBasDanmu[i] = {
+                rows: rows.length,
+                nico: [danmu],
+                color: color,
+                content: basBody.join(''),
+                ctime: danmu.ctime,
+                fontsize: fontSize,
+                id: i + startIndex,
+                idStr: str(i + startIndex),
+                midHash: 'niconico',
+                mode: 9,
+                progress: danmu.progress,
+                weight: 10
+            }
+        } catch
+            (e) {
             console.log(e, danmu)
         }
     }
-    lBasDanmu.sort(function (a, b) {
-        return [a.progress - b.progress, a.nico.duration - b.nico.duration]
-    })
     let lastDanmu = null
     for (let i = 0; i < lBasDanmu.length; i++) {
         let danmu = lBasDanmu[i]
-        if (lastDanmu === null || danmu.progress !== lastDanmu.progress || danmu.nico.duration !== lastDanmu.nico.duration) {
+        if (lastDanmu === null || danmu.progress !== lastDanmu.progress) {
             ldanmu.append(danmu)
             lastDanmu = danmu
         } else {
@@ -3258,9 +3286,12 @@ async function getBiliVideoDuration(aid, cid) {
     let pagelist = JSON.parse(await xhrGet('https://api.bilibili.com/x/player/pagelist?aid=' + aid + '&jsonp=jsonp'))
     let tDuration = null
     for (let page of pagelist.data) {
-        if (page.cid === cid) {
+        if (page.cid === parseInt(cid)) {
             tDuration = page.duration
         }
+    }
+    if (tDuration === null) {
+        console.log('cid', cid, 'not in', pagelist)
     }
     return tDuration
 }
@@ -3790,17 +3821,21 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                         'ldanmu': null,
                         'ndanmu': null
                     })
+                    let duration = null
+                    if (request.aid) {
+                        duration = await getBiliVideoDuration(request.aid, cid)
+                    }
                     if (window.setting.filterRule.length === 0) {
-                        ret = await moreHistory(cid, request.duration)
+                        ret = await moreHistory(cid, duration)
                     } else {
-                        ret = await moreFiltedHistory(cid, request.duration, 0)
+                        ret = await moreFiltedHistory(cid, duration, 0)
                     }
 
                     // inject_panel(tabid)
                     ldanmu = ret[0]
                     ndanmu = ret[1]
                     if (ret[2] < request.expectedDanmuNum && ret[2] > Math.min(ndanmu, 5000)) {
-                        mergeDanmu(ldanmu, await allProtobufDanmu(cid, request.duration))
+                        mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
                     }
                     console.log('ndanmu:' + ldanmu.length + ' from history')
                     let peposide = setting.bindedCid[cid]
@@ -3816,7 +3851,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     let serverError = false
                     if (request.ssid !== null) {
                         try {
-                            ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, request.duration, ndanmu, null, len(ldanmu)))
+                            ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, duration, ndanmu, null, len(ldanmu)))
                         } catch (e) {
                             console.log(e)
                             serverError = true

@@ -1,9 +1,7 @@
-
 (function () {
     if (XMLHttpRequest.prototype.pakku_open) return;
     let insertedUI = false
     let setting = null
-
 
     async function parse(url, json = false) {
 
@@ -481,7 +479,7 @@
                 console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
                 return that.pakku_send(arg);
             }
-        } else if (this.pakku_url.indexOf('season?ep_id' )!== -1) {
+        } else if (this.pakku_url.indexOf('season?ep_id') !== -1) {
             console.log('hook seasonInfo')
             this.pakku_addEventListener('readystatechange', function (s) {
                 if (4 === s.target.readyState) {
@@ -493,7 +491,7 @@
                 }
             })
             return this.pakku_send(arg)
-        }else if(this.pakku_url.indexOf('player/v2?ep_id' )!== -1){} else {
+        }else {
 
             return this.pakku_send(arg)
         }
