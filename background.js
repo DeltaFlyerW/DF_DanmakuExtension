@@ -73,10 +73,6 @@ function editConfig(key, value) {
             console.log('不推荐用户uid过滤大于一亿')
         }
     }
-    if (key === 'translateThreshold' && value < 7) {
-        console.log('暂时不支持翻译长度小于7的N站弹幕')
-        return;
-    }
     window.setting[key] = value
     saveConfig()
     console.log('修改成功')
@@ -90,8 +86,8 @@ function saveConfig() {
 }
 
 let defaultConfig = {
-    danmuRate: 3.1,
-    nicoDanmuRate: 1,
+    danmuRate: 2.1,
+    nicoDanmuRate: 0.25,
     loadNicoComment: true,
     loadNicoScript: true,
     translateNicoComment: true,
@@ -2352,6 +2348,7 @@ function parseNicoServerResponse(sdanmu, startIndex = 0) {
         let lNicoCommendObject = []
         for (let i = 0; i < ldanmu.length; i++) {
             let [argv, command, content] = ldanmu[i].split('""')
+            content = xmlunEscape(content)
             let [vpos, date] = argv.split(',')
             lNicoCommendObject.append({
                 date: date,
@@ -2372,9 +2369,8 @@ function getStringWidth(str) {
         var s = list[i];
         if (s.match(/[\u0000-\u00ff]/g)) { //半角
             totalLength += 1;
-        } else if (s.match(/[\u4e00-\u9fa5]/g)) { //中文
+        } else
             totalLength += 2;
-        }
     }
     return totalLength;
 }
@@ -2423,6 +2419,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
         27.5: 14,
         22.5: 21,
     }
+    let lBasDanmu = []
     for (let i = 0; i < lres.length; i++) {
         let danmu = lres[i]
         try {
@@ -2538,7 +2535,12 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                 }
                 let rows = content.split('\n')
                 argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
-                let basBody = ["def text c {\n"];
+                if (len(rows) > 45) {
+                    argv['fontSize'] = (100 / (len(rows) * 2)).toFixed(5) + '%'
+                    console.log(danmu.content)
+                    console.log('Unknown fontsize', len(rows), danmu)
+                }
+                let basBody = ["def text c" + i + " {\n"];
                 for (let key in argv) {
                     basBody.append(key + '=' + str(argv[key]) + '\n')
                 }
@@ -2551,11 +2553,12 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                     }
                     maxWidth = maxWidth / dFontRatio[fontSize]
                     danmuDuration = danmuDuration * (1 + maxWidth)
-                    basBody.append("set c {x=" + ((-maxWidth * 100).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's');
+                    basBody.append("set c" + i + " {x=" + ((-maxWidth * 100).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's\n');
                 }
-                ldanmu.append({
+                danmu['duration'] = 4
+                lBasDanmu.append({
                     rows: rows.length,
-                    nico: danmu,
+                    nico: [danmu],
                     color: color,
                     content: basBody.join(''),
                     ctime: ctime,
@@ -2571,6 +2574,20 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
 
         } catch (e) {
             console.log(e, danmu)
+        }
+    }
+    lBasDanmu.sort(function (a, b) {
+        return [a.progress - b.progress, a.nico.duration - b.nico.duration]
+    })
+    let lastDanmu = null
+    for (let i = 0; i < lBasDanmu.length; i++) {
+        let danmu = lBasDanmu[i]
+        if (lastDanmu === null || danmu.progress !== lastDanmu.progress || danmu.nico.duration !== lastDanmu.nico.duration) {
+            ldanmu.append(danmu)
+            lastDanmu = danmu
+        } else {
+            ldanmu[len(ldanmu) - 1].content += danmu.content
+            ldanmu[len(ldanmu) - 1].nico.append(danmu.nico[0])
         }
     }
     // if (window.setting.translateNicoComment) {
@@ -3291,7 +3308,7 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
             }
         }
     }
-    if (nicoDanmu[0] !== 's') {
+    if (len(nicoDanmu) > 10) {
         let res = parseNicoServerResponse(nicoDanmu, len(ldanmu))
         if (setting.replaceKatakana) {
             res = replaceKatakana(res)
@@ -3311,11 +3328,11 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
                 if (sn.offset !== 'ignore') {
                     res = applyOffset(res, sn.offset)
                 } else {
-                    let tDuration = await getBiliVideoDuration(aid, cid)-1
+                    let tDuration = await getBiliVideoDuration(aid, cid) - 1
                     res = applyOffset(res, [[0, duration - tDuration]])
                 }
             } else {
-                let tDuration = await getBiliVideoDuration(aid, cid)-1
+                let tDuration = await getBiliVideoDuration(aid, cid) - 1
                 if (Math.abs(duration - tDuration) < 3) {
                     res = (await moreFiltedHistory(cid, duration))[0]
                 }
@@ -3748,6 +3765,8 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                                     if (event.data.type !== 'cidCache' || event.data.cid !== cid) {
                                         return
                                     }
+                                    ldanmu = event.data.ldanmu
+                                    ndanmu = event.data.ndanmu
                                     window.removeEventListener('message', handle)
                                     resolve()
                                 }
@@ -3755,8 +3774,6 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                                 window.addEventListener("message", handle)
                             })
                         }
-                        ldanmu = dldanmu['ldanmu']
-                        ndanmu = dldanmu['ndanmu']
                         // console.log('readTemp')
                         break
                     }
@@ -3782,7 +3799,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     // inject_panel(tabid)
                     ldanmu = ret[0]
                     ndanmu = ret[1]
-                    if (ret[2] < request.expectedDanmuNum) {
+                    if (ret[2] < request.expectedDanmuNum && ret[2] > Math.min(ndanmu, 5000)) {
                         mergeDanmu(ldanmu, await allProtobufDanmu(cid, request.duration))
                     }
                     console.log('ndanmu:' + ldanmu.length + ' from history')
@@ -3796,24 +3813,35 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                         ldanmu = ldanmu.concat(await nicoDanmu(nicoinfo))
                     }
                     let youtubeUrl = request.youtubeUrl
+                    let serverError = false
                     if (request.ssid !== null) {
-                        ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, request.duration, ndanmu, null, len(ldanmu)))
+                        try {
+                            ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, request.duration, ndanmu, null, len(ldanmu)))
+                        } catch (e) {
+                            console.log(e)
+                            serverError = true
+                        }
                     }
                     // if (youtubeUrl !== null) {
                     //     console.log('Found YoutubeURL:' + youtubeUrl)
                     //     ldanmu = ldanmu.concat(await youtubeDanmu(youtubeUrl))
                     // }
-                    if (window.ldldanmu.length > 5) {
+
+                    if (window.ldldanmu.length > 10) {
                         window.ldldanmu.shift()
                     }
 
                     for (let i = 0; i < window.ldldanmu.length; i += 1) {
                         if (window.ldldanmu[i].cid === cid) {
-                            window.ldldanmu[i].ldanmu = ldanmu
-                            window.ldldanmu[i].ndanmu = ndanmu
+                            if (!serverError) {
+                                window.ldldanmu[i].ldanmu = ldanmu
+                                window.ldldanmu[i].ndanmu = ndanmu
+                            } else {
+                                window.ldldanmu.splice(i, 1);
+                            }
                         }
                     }
-                    window.postMessage({type: 'cidCache', cid: cid})
+                    window.postMessage({type: 'cidCache', cid: cid, ldanmu: ldanmu, ndanmu: ndanmu})
                 }
                 currentDanmu = ldanmu
 
