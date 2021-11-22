@@ -419,8 +419,8 @@
     };
     XMLHttpRequest.prototype.pakku_send = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function (arg) {
-        if (this.pakku_url.indexOf("list.so") !== -1
-            || this.pakku_url.indexOf('seg.so') !== -1
+        if ((this.pakku_url.indexOf("list.so") !== -1
+            || this.pakku_url.indexOf('seg.so') !== -1) && this.pakku_url.indexOf('data.bilibili.com') === -1
         ) {
             // || this.pakku_url.indexOf('web-interface/view') !== -1) {
             // if (!insertedUI) {
@@ -491,7 +491,7 @@
                 }
             })
             return this.pakku_send(arg)
-        }else {
+        } else {
 
             return this.pakku_send(arg)
         }

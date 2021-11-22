@@ -29,16 +29,16 @@ async function loadConfig() {
     // window.hasProxy = true
     window.hasProxy = false
     help()
-    window.danmuServerDomain = 'https://delflare505.win:800'
+    window.danmuServerDomain = 'http://152.32.146.234:400'
     testServer()
     // console.log(defaultConfig)
     window.ldldanmu = [];
 }
 
 async function testServer() {
-    let res = await xhrGet(window.danmuServerDomain + '/testConnect')
-    if (res === null) {
-        window.danmuServerDomain = 'http://152.32.146.234:400'
+    let res = await xhrGet('https://delflare505.win:800' + '/testConnect')
+    if (res !== null) {
+        window.danmuServerDomain = 'https://delflare505.win:800'
     }
 }
 
@@ -1386,12 +1386,13 @@ function ldanmu_to_proto_seg(ldanmu, segIndex) {
     //             + cid + '&segment_index=' + segIndex))
     //     )
     // }
-
-    for (sdanmu of ldanmu) {
-        if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
-            res.push(sdanmu)
+    if (segIndex !== null) {
+        for (sdanmu of ldanmu) {
+            if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
+                res.push(sdanmu)
+            }
         }
-    }
+    } else res = ldanmu
     let res_uint8arr = proto_seg.encode(proto_seg.create({elems: res})).finish();
     if (LOG_PROTO) console.log("verbose proto:", dom, res, res_uint8arr);
     return [res_uint8arr, res.length, res]
@@ -3517,7 +3518,7 @@ let yuyuyu = {
     "365976886": ["33129023"],
     "365977602": ["33688747"],
     "365977530": ["36384945"],
-    "365977656": ["37835997"],
+    "365977656": ["37835997", "39706653"],
     "365977752": ["39082391"],
     "365874743": ["29830931"],
     "365978079": ["39706653"],
@@ -3551,8 +3552,21 @@ let yuyuyu = {
     "377232080": ["76192562"],
     "377235605": ["76581343"],
     "377233494": ["77924074"],
+    "377237306": ["78438967"],
     "377208240": ["41753456"],
+    "377239175": ["78629728"],
+    "377239025": ["82777548"],
+    "377238484": ["83551905"],
+    "377238454": ["87692283"],
+    "377241759": ["93091931"],
+    "377241755": ["94127748"],
+    "377242089": ["96304642"],
+    "377242387": ["97916200"],
+    "377780106": ["78438897"],
+    "377789885": ["79262072"],
     "377205167": ["44284335"],
+    "377777511": ["84288918"],
+    "377781780": ["95613038"],
     "377780230": ["37971672"],
     "377799128": ["42460350"],
     "377798674": ["45561413"],
@@ -3694,9 +3708,19 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
     }
 
     let tabid = sender.tab.id;
-    console.log(request.type, request);
     if (request.type === "ajax_hook") {
         if (request.url.indexOf('.so') !== -1) {
+            if (/segment_index=1$/.exec(request.url) === null) {
+                console.log('skip trailing');
+                sendResponseAsync({
+                    data: ldanmu_to_proto_seg([], 1),
+                    type: request.type + '_response',
+                    href: request.url,
+                    ndanmu: null
+                });
+                return
+            }
+            console.log(request.type, request);
             let ret = parse_danmu_url(request.url);
             if (ret) {
                 let protocol = ret[1], cid = ret[2], debug = ret[3], url_type = ret[4];
@@ -3807,7 +3831,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     if (segindex === 1) {
                         console.log('total ndanmu:' + ldanmu.length)
                     }
-                    res = ldanmu_to_proto_seg(ldanmu, segindex, cid, ndanmu)
+                    res = ldanmu_to_proto_seg(ldanmu, null, cid, ndanmu)
                     console.log('cid:', cid, 'segindex:', segindex, 'length', res[1])
                     res = res[0]
                 }

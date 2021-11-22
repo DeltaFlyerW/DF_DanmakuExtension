@@ -99,7 +99,7 @@ if (document.head) {
             if (event.source !== window) return;
             if (event.data) {
                 if (event.data.type === "pakku_ajax_request") {
-                    try{
+                    try {
                         let cid = /oid=(\d+)/.exec(event.data.arg)[1]
                         if (skipCid === cid) {
                             console.log('Ignore cid', skipCid)
@@ -140,7 +140,7 @@ if (document.head) {
                                 if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55))
                                     return;
                                 chrome.runtime.onMessage.removeListener(handle)
-                                if (resp.data !== null) {
+                                if (resp.data !== null && resp.ndanmu !== null) {
                                     console.log('GotDanmuFromDFex', resp.ndanmu)
                                     if (skipCid !== cid) {
                                         if (ondanmu !== null) {
@@ -166,7 +166,7 @@ if (document.head) {
                             chrome.runtime.onMessage.addListener(handle)
 
                         })
-                    }catch (e) {
+                    } catch (e) {
                         console.log(e)
                         window.postMessage({
                             type: "pakku_ajax_response",
@@ -174,7 +174,6 @@ if (document.head) {
                             resp: null
                         }, "*");
                     }
-
 
 
                 } else if (event.data.type === 'seasonInfo') {
