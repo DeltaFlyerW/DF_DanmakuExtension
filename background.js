@@ -29,9 +29,17 @@ async function loadConfig() {
     // window.hasProxy = true
     window.hasProxy = false
     help()
-
+    window.danmuServerDomain = 'https://delflare505.win:800'
+    testServer()
     // console.log(defaultConfig)
     window.ldldanmu = [];
+}
+
+async function testServer() {
+    let res = await xhrGet(window.danmuServerDomain + '/testConnect')
+    if (res === null) {
+        window.danmuServerDomain = 'http://152.32.146.234:400'
+    }
 }
 
 function help() {
@@ -1429,21 +1437,6 @@ String.prototype.hashCode = function () {
 };
 
 function mergeDanmu(oldanmu, nldanmu) {
-    // let result = oldanmu, isRepeated;
-    // for (let i = 0, len1 = nldanmu.length; i < len1; i++) {
-    //     isRepeated = false;
-    //
-    //     for (let j = 0, len2 = oldanmu.length; j < len2; j++) {
-    //         if (nldanmu[i].id === oldanmu[j].id) {// && nldanmu[i].content === oldanmu[j].content) {
-    //             isRepeated = true;
-    //             break
-    //         }
-    //     }
-    //     if (!isRepeated) {
-    //         result.push(nldanmu[i]);
-    //     }
-    // }
-    // return result
     if (oldanmu.idPool === undefined) {
 
         let idPool = new Set()
@@ -1515,7 +1508,21 @@ function str(object) {
     return object.toString()
 }
 
-
+Array.prototype.sortMultiParameter = function (parameters) {
+    this.sort(function (a, b) {
+        for (let p of parameters) {
+            let reverse = 1
+            if (p[0] === '!') {
+                reverse = -1
+                p = p.slice(1)
+            }
+            if (a[p] !== b[p]) {
+                return (a[p] > b[p] ? 1 : -1) * reverse
+            }
+        }
+        return 0
+    })
+}
 Array.prototype.append = Array.prototype.push
 String.prototype.join = function (array) {
     return array.join(this)
@@ -1936,17 +1943,6 @@ async function xhrPost(option) {
 }
 
 
-// function inject_panel(tabid) {
-//     setTimeout(function () {
-//         chrome.tabs.executeScript(tabid, {
-//             file: "injected.js",
-//             allFrames: true,
-//             runAt: "document_end"
-//         })
-//     }, 100)
-//
-// }
-
 function crcFilter() {
     'use strict';
     if (window.setting.uidFilter === -1) {
@@ -2313,7 +2309,7 @@ function genNicoAPIBody(lthread, duration, isOwnerThreadReverse = false) {
     return body
 }
 
-function parseNicoServerResponse(sdanmu, startIndex = 0) {
+function parseNicoServerResponse(sdanmu, startIndex = 0, encrypt = false) {
     let ldanmu
     if (sdanmu[0] === '<') {
         ldanmu = sdanmu.split('</d><d p=');
@@ -2348,6 +2344,11 @@ function parseNicoServerResponse(sdanmu, startIndex = 0) {
         let lNicoCommendObject = []
         for (let i = 0; i < ldanmu.length; i++) {
             let [argv, command, content] = ldanmu[i].split('""')
+            if (encrypt) {
+                content = content.replace(/^(\\x)/g, '\\u')
+                content = content.replace(/([^\\])\\x/g, '$1\\u')
+            }
+
             content = xmlunEscape(content)
             let [vpos, date] = argv.split(',')
             lNicoCommendObject.append({
@@ -2363,16 +2364,49 @@ function parseNicoServerResponse(sdanmu, startIndex = 0) {
 }
 
 function getStringWidth(str) {
-    var totalLength = 0;
-    var list = str.split("");
-    for (var i = 0; i < list.length; i++) {
-        var s = list[i];
-        if (s.match(/[\u0000-\u00ff]/g)) { //半角
-            totalLength += 1;
-        } else
-            totalLength += 2;
+
+    var realLength = 0;
+    var len = str.length;
+    var charCode = -1;
+
+    for (var i = 0; i < len; i++) {
+        charCode = str.charCodeAt(i);
+
+        if (charCode >= 0 && charCode <= 254) {
+            // 0-255中的全角文字，依次对应下面的字符
+            // ¢ , £ , § , ¨ , « , ¬ , ¯ , ° , ± , ´ , µ , ¶ , · , ¸ , » , × , ÷
+            if (charCode === 162
+                || charCode === 163
+                || charCode === 167
+                || charCode === 168
+                || charCode === 171
+                || charCode === 172
+                || charCode === 175
+                || charCode === 176
+                || charCode === 177
+                || charCode === 180
+                || charCode === 181
+                || charCode === 182
+                || charCode === 183
+                || charCode === 184
+                || charCode === 187
+                || charCode === 215
+                || charCode === 247) {
+                realLength += 2;
+            } else {
+                realLength += 1;
+            }
+        } else if (charCode >= 65377 && charCode <= 65439) {
+            if (charCode === 65381) { // '･'该字符的长度为两个字节
+                realLength += 2;
+            } else {
+                realLength += 1;
+            }
+        } else {
+            realLength += 2;
+        }
     }
-    return totalLength;
+    return realLength;
 }
 
 function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
@@ -2425,6 +2459,8 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
         try {
             let ctime = danmu['date'], progress = danmu['vpos'] * 10, content = danmu['content'],
                 command = danmu['mail'], isReplaced = false
+            // if (progress > 600)
+            //     progress -= 600 //http://nicowiki.com/elsecom.html#nakahyoji
             for (let script of lNicoScript) {
                 if (script['type'] === 'replace') {
                     if ((script['exactMatch'] && content === script['src']) || (!script['exactMatch'] && content.indexOf(script['src']) !== -1)) {
@@ -2443,7 +2479,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
             let fontSize = 25
             let color = 0xffffff
             let isBasDanmu = content.find("\n") !== -1;
-            let duration = 4
+            let duration = null
             if (len(command) > 0) {
                 lcommand = JSON.parse('"' + command + '"').split(' ')
                 for (let command of lcommand) {
@@ -2464,12 +2500,17 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                         } catch (e) {
                         }
                     else if (command[0] === "@") {
-                        duration = Number(command.slice(1))
+                        if (!isReplaced) {
+                            duration = Number(command.slice(1))
+                        }
                         isBasDanmu = true
                     } else if (command === 'migi' || command === 'hidari') {
                         isBasDanmu = true
                     }
                 }
+            }
+            if (danmuType === 1 && progress > 1000) {
+                progress -= 1000
             }
             danmu = {
                 nico: danmu,
@@ -2495,9 +2536,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
         }
     }
 
-    lBasDanmu.sort(function (a, b) {
-        return [a.progress - b.progress, a.mode - b.mode]
-    })
+    lBasDanmu.sortMultiParameter(['progress', 'mode', 'duration'])
     let rowCount = 0
     for (let i = 0; i < lBasDanmu.length; i++) {
         let danmu = lBasDanmu[i]
@@ -2539,55 +2578,67 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
             let content = danmu.content.replace(/\t/g, '    ')
             let rows = content.split('\n')
             let increaseRow = false
-            if (danmu.mode === 5) {
-                argv["anchorY"] = "0";
-                argv["y"] = "0%";
-                argv["x"] = "50%";
-                argv["duration"] = danmu.nico.duration + 's';
-            } else if (danmu.mode === 4) {
-                argv["anchorY"] = "1";
-                argv["y"] = "100%";
-                argv["x"] = "50%";
-                argv["duration"] = danmu.nico.duration + 's';
-            } else {
-                if (i > 0) {
-                    let lastDanmu = lBasDanmu[i - 1]
-                    if (lastDanmu.mode === 1 && danmu.mode === 1
-                        && danmu.progress === lastDanmu.progress) {
-                        rowCount += lastDanmu.rows
-                        danmu.content = '\n'.repeat(rowCount) + danmu.content
-                        increaseRow = true
-                    }
-                }
-                argv['anchorX'] = 0
-            }
-            if (!increaseRow) {
-                rowCount = 0
-            }
             argv['content'] = JSON.stringify(content)
             argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
             if (len(rows) > 45) {
                 argv['fontSize'] = (100 / (len(rows) * 2)).toFixed(5) + '%'
-                console.log(danmu.content)
                 console.log('Unknown fontsize', len(rows), danmu)
             }
+            if (danmu.mode === 1) {
+                if (danmu.nico.duration === null) {
+                    danmu.nico.duration = 4
+                }
+                if (i > 0) {
+                    let lastDanmu = lBasDanmu[i - 1]
+                    if (len(rows) < 5 && lastDanmu.mode === 1 && danmu.mode === 1
+                        && (danmu.progress - lastDanmu.progress) < 1000) {
+                        rowCount += lastDanmu.rows
+                        content = '\n'.repeat(rowCount) + content
+                        increaseRow = true
+                    }
+                }
+                argv['anchorX'] = 0
+            } else {
+                if (danmu.nico.duration === null) {
+                    danmu.nico.duration = 3
+                }
+                argv["duration"] = danmu.nico.duration + 's';
+                if (danmu.mode === 5) {
+                    argv["anchorY"] = "0";
+                    argv["y"] = "0%";
+                    argv["x"] = "50%";
+                } else if (danmu.mode === 4) {
+                    argv["anchorY"] = "1";
+                    argv["y"] = "100%";
+                    argv["x"] = "50%";
+                    argv["duration"] = danmu.nico.duration + 's';
+                }
+            }
+            if (!increaseRow) {
+                if (rowCount > 0) {
+                    console.log(danmu)
+                }
+                rowContent = ''
+                rowLdanmu = []
+                rowCount = 0
+            }
+
             let basBody = ["def text c" + i + " {\n"];
             for (let key in argv) {
                 basBody.append(key + '=' + str(argv[key]) + '\n')
             }
             basBody.append("}\n");
             if (danmuType === 1) {
+                let danmuDuration = danmu.nico.duration
                 let maxWidth = 0
                 for (let row of rows) {
                     let length = getStringWidth(row)
                     if (length > maxWidth) maxWidth = length
                 }
                 maxWidth = maxWidth / dFontRatio[fontSize]
-                let danmuDuration = danmu.nico.duration
-                danmuDuration = danmuDuration * (1 + maxWidth)
-                basBody.append("set c" + i + " {x=" + ((-maxWidth * 100).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's\n');
+                danmuDuration *= 2
+                basBody.append("set c" + i + " {x=" + ((-maxWidth * 50).toFixed(2)) + "%}" + danmuDuration.toFixed(4) + 's\n');
             }
-            danmu['duration'] = 4
             lBasDanmu[i] = {
                 rows: rows.length,
                 nico: [danmu],
@@ -2598,7 +2649,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                 id: i + startIndex,
                 idStr: str(i + startIndex),
                 midHash: 'niconico',
-                mode: 9,
+                mode: danmu.mode,
                 progress: danmu.progress,
                 weight: 10
             }
@@ -2610,6 +2661,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
     let lastDanmu = null
     for (let i = 0; i < lBasDanmu.length; i++) {
         let danmu = lBasDanmu[i]
+        danmu.mode = 9
         if (lastDanmu === null || danmu.progress !== lastDanmu.progress) {
             ldanmu.append(danmu)
             lastDanmu = danmu
@@ -2628,7 +2680,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
 async function nicoDanmu(nicoid, startIndex = 0) {
     if (window.hasProxy === false || nicoid.startsWith('so')) {
         console.log('Found NicoID:' + nicoid)
-        let url = 'https://delflare505.win:800/nico/?nicoid=' + nicoid + '&command=1'
+        let url = window.danmuServerDomain + '/nico/?nicoid=' + nicoid + '&encrypt=1'
         if (setting.translateNicoComment) {
             url += '&translate=1'
         }
@@ -2643,7 +2695,7 @@ async function nicoDanmu(nicoid, startIndex = 0) {
         if (nicodanmu === null) {
             return []
         }
-        let ldanmu = parseNicoServerResponse(nicodanmu)
+        let ldanmu = parseNicoServerResponse(nicodanmu, 0, true)
         if (setting.translateNicoComment && setting.replaceKatakana) {
             ldanmu = replaceKatakana((ldanmu))
         }
@@ -3300,7 +3352,7 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     if (setting === null) {
         setting = window.setting
     }
-    let url = 'https://delflare505.win:800/getBindInfo?ss=' + ssid + '&index=' + ipage
+    let url = window.danmuServerDomain + '/getBindInfo?ss=' + ssid + '&index=' + ipage + '&encrypt=1'
     if (setting.translateNicoComment) {
         url += '&translate=1'
     }
@@ -3340,7 +3392,7 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
         }
     }
     if (len(nicoDanmu) > 10) {
-        let res = parseNicoServerResponse(nicoDanmu, len(ldanmu))
+        let res = parseNicoServerResponse(nicoDanmu, len(ldanmu), true)
         if (setting.replaceKatakana) {
             res = replaceKatakana(res)
         }
@@ -3374,6 +3426,148 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     return ldanmu
 }
 
+let yuyuyu = {
+    "365987968": ["27840775"],
+    "366009502": ["30915370"],
+    "372231339": ["68998472"],
+    "372226933": ["70299478"],
+    "372231912": ["73078883", "70299566"],
+    "372236711": ["70439113"],
+    "372246629": ["72144496"],
+    "372236935": ["72144432"],
+    "366009228": ["30915371"],
+    "366009539": ["30915372"],
+    "370556018": ["20479868"],
+    "370561332": ["20668859"],
+    "370562758": ["34085819"],
+    "370560322": ["34085837"],
+    "370584514": ["20876728"],
+    "370567817": ["21139437"],
+    "370575777": ["44768035"],
+    "366008095": ["27860154"],
+    "370571511": ["44768048"],
+    "370589136": ["24691214"],
+    "370575597": ["24837069"],
+    "370577202": ["52082216"],
+    "370576292": ["52082217"],
+    "370588637": ["25334865"],
+    "370583360": ["25448399"],
+    "370583273": ["52082230"],
+    "370587569": ["52082257"],
+    "371138359": ["25649235"],
+    "366008243": ["27925827"],
+    "371124479": ["25861707"],
+    "371128932": ["54074045"],
+    "371147655": ["26016140"],
+    "371127806": ["26077042"],
+    "371134263": ["54074051"],
+    "371134463": ["54074096"],
+    "371152870": ["26118958"],
+    "371150331": ["26221887"],
+    "371145493": ["61561534"],
+    "371149153": ["61561541"],
+    "366008933": ["27975576"],
+    "371159808": ["32367466", "32438163"],
+    "371155867": ["32438164"],
+    "371158970": ["61737734"],
+    "371158937": ["61737739"],
+    "371220206": ["32884777", "32945997"],
+    "371211550": ["32946010"],
+    "371214315": ["63041780"],
+    "371215794": ["63041782"],
+    "371223038": ["33506812"],
+    "371220679": ["33771601"],
+    "366009465": ["31264610"],
+    "371218747": ["63404024"],
+    "371229233": ["63404026"],
+    "371231532": ["34541799"],
+    "371228166": ["34708551"],
+    "371850821": ["35140084"],
+    "371848352": ["35290715"],
+    "366008935": ["19940354", "35140082"],
+    "371849747": ["35882768"],
+    "371850784": ["35882779"],
+    "371852442": ["39240438"],
+    "371852567": ["39259553"],
+    "371854558": ["39491237"],
+    "371854810": ["39433610"],
+    "366008814": ["23567020", "34085817"],
+    "371856197": ["40348013"],
+    "371856386": ["40348014"],
+    "371856234": ["45398417"],
+    "371857913": ["45398437"],
+    "366008089": ["31656440"],
+    "371858638": ["47374375"],
+    "371857975": ["47374374"],
+    "371859725": ["48594522"],
+    "371859983": ["48620698"],
+    "372206540": ["55634358"],
+    "372202826": ["55634443"],
+    "366010017": ["20048078", "35140107"],
+    "372206010": ["57692507"],
+    "372208157": ["57692513"],
+    "372216925": ["57692543"],
+    "372219002": ["57692984"],
+    "365826526": ["29354000"],
+    "365971372": ["28279043"],
+    "365971455": ["30177035"],
+    "365972579": ["29354002"],
+    "365974390": ["31526576"],
+    "365975942": ["31899421", "32056801"],
+    "365976886": ["33129023"],
+    "365977602": ["33688747"],
+    "365977530": ["36384945"],
+    "365977656": ["37835997"],
+    "365977752": ["39082391"],
+    "365874743": ["29830931"],
+    "365978079": ["39706653"],
+    "365978042": ["39503183"],
+    "365978205": ["40681155"],
+    "366003498": ["21754879", "37835983"],
+    "366003854": ["21940048"],
+    "366003485": ["22114651"],
+    "366003823": ["22652858"],
+    "366005058": ["26413969"],
+    "366005344": ["26550587"],
+    "366006484": ["28767635"],
+    "365905613": ["30177034"],
+    "366005196": ["30009321"],
+    "366004140": ["31014571"],
+    "366005397": ["34211222"],
+    "366005387": ["35824728"],
+    "365905866": ["30477864"],
+    "365922956": ["21164623"],
+    "365923087": ["21521108"],
+    "365970157": ["26805876"],
+    "365970185": ["27132910"],
+    "365970624": ["28058290"],
+    "377203240": ["41072029"],
+    "377222845": ["55878860"],
+    "377222748": ["60041183"],
+    "377228103": ["60918450"],
+    "377228600": ["65820249"],
+    "377229345": ["65913134"],
+    "377228565": ["75292330"],
+    "377232080": ["76192562"],
+    "377235605": ["76581343"],
+    "377233494": ["77924074"],
+    "377208240": ["41753456"],
+    "377205167": ["44284335"],
+    "377780230": ["37971672"],
+    "377799128": ["42460350"],
+    "377798674": ["45561413"],
+    "377799009": ["53343872"],
+    "377795396": ["56738474"],
+    "377799342": ["57692612"],
+    "377797596": ["62806333"],
+    "377782761": ["73082924"],
+    "377205223": ["45315070"],
+    "377214861": ["48407277"],
+    "377209007": ["48407274"],
+    "377217627": ["50365593"],
+    "377219529": ["50624685"],
+    "377220481": ["55080304", "55634356"]
+}
 
 function bindPath(request) {
     let ldeposide = JSON.parse(request.arg)
@@ -3468,10 +3662,13 @@ function searchContent(keyword) {
     return res
 }
 
-function searchPeriod(start, end) {
+function searchPeriod(start, end = 0) {
     let res = []
+    if (end === 0) {
+        end = start + 1
+    }
     for (let danmu of window.ldldanmu[window.ldldanmu.length - 1].ldanmu) {
-        if (danmu.progress / 1000 > start && danmu.progress / 1000 < end) {
+        if (danmu.progress / 1000 >= start && danmu.progress / 1000 < end) {
             console.log(danmu)
             res.push(danmu)
         }
@@ -3480,290 +3677,6 @@ function searchPeriod(start, end) {
 }
 
 let currentDanmu
-
-// let youtubeCommentDict = {
-//     questPool: new Set(),
-//     idPool: [],
-//     continuePool: []
-// }
-//
-// function buildYoutubeCommentResponse(details) {
-//     console.log(details)
-//     let aid = /oid=(.*?)&/.exec(details.url)[1]
-//
-//     let request = null
-//     for (let dcid of window.ldldanmu) {
-//         if (dcid.aid === aid) {
-//             request = dcid
-//         }
-//     }
-//     if (request === null) {
-//         return null
-//     }
-//     let youtubeUrl = request.youtubeUrl
-//     const xhr = new XMLHttpRequest();
-//     xhr.open("get", 'http://127.0.0.1:800/youtube_comment/?youtubeid=' + youtubeUrl, false);
-//     xhr.send()
-//     let res = xhr.response
-//     console.log(res, xhr)
-//     res = JSON.parse(res)
-//     console.log(res)
-//     let comments = res.comments
-//     let head = /callback=(.*?)&/.exec(details.url)[0]
-//     let data = {
-//         "code": 0,
-//         "message": "0",
-//         "ttl": 1,
-//         "data": {
-//             "cursor": {
-//                 "all_count": 1,
-//                 "is_begin": true,
-//                 "prev": 1,
-//                 "next": 1,
-//                 "is_end": false,
-//                 "mode": 2,
-//                 "show_type": 1,
-//                 "support_mode": [
-//                     1,
-//                     2,
-//                     3
-//                 ],
-//                 "name": "最新评论"
-//             },
-//             "hots": null,
-//             "notice": null,
-//             "replies": [],
-//             "top": {
-//                 "admin": null,
-//                 "upper": null,
-//                 "vote": null
-//             },
-//             "lottery_card": null,
-//             "folder": {
-//                 "has_folded": false,
-//                 "is_folded": false,
-//                 "rule": "https://www.bilibili.com/blackboard/foldingreply.html"
-//             },
-//             "up_selection": {
-//                 "pending_count": 0,
-//                 "ignore_count": 0
-//             },
-//             "cm": {},
-//             "effects": {
-//                 "preloading": ""
-//             },
-//             "assist": 0,
-//             "blacklist": 0,
-//             "vote": 0,
-//             "lottery": 0,
-//             "config": {
-//                 "showadmin": 1,
-//                 "showentry": 1,
-//                 "showfloor": 0,
-//                 "showtopic": 1,
-//                 "show_up_flag": true,
-//                 "read_only": false,
-//                 "show_del_log": true
-//             },
-//             "upper": {
-//                 "mid": 492319438
-//             },
-//             "show_bvid": false,
-//             "control": {
-//                 "input_disable": false,
-//                 "root_input_text": "发一条友善的评论",
-//                 "child_input_text": "",
-//                 "giveup_input_text": "不发没关系，请继续友善哦~",
-//                 "bg_text": "看看下面~来发评论吧",
-//                 "web_selection": false,
-//                 "answer_guide_text": "需要升级成为lv2会员后才可以评论，先去答题转正吧！",
-//                 "answer_guide_icon_url": "http://i0.hdslb.com/bfs/emote/96940d16602cacbbac796245b7bb99fa9b5c970c.png",
-//                 "answer_guide_ios_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1\u0026re_src=12",
-//                 "answer_guide_android_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1\u0026re_src=6",
-//                 "show_type": 1,
-//                 "show_text": ""
-//             }
-//         }
-//     }
-//     for (let comment of comments) {
-//
-//         let show_follow = false
-//         let cid = 0
-//         if (comment.hasOwnProperty('replies')) {
-//             youtubeCommentDict.idPool.push(comment.replies)
-//             cid = youtubeCommentDict.idPool.length - 1
-//             show_follow = true
-//         }
-//         s = {
-//             "rpid": cid,
-//             "oid": 0,
-//             "type": 1,
-//             "mid": 0,
-//             "root": 0,
-//             "parent": 0,
-//             "dialog": 0,
-//             "count": 0,
-//             "rcount": 0,
-//             "floor": 1,
-//             "state": 0,
-//             "fansgrade": 0,
-//             "attr": 0,
-//             "ctime": 0,
-//             "rpid_str": "0",
-//             "root_str": "0",
-//             "parent_str": "0",
-//             "like": comment.votes,
-//             "action": 0,
-//             "member": {
-//                 "mid": "0",
-//                 "uname": comment.author,
-//                 "sex": "未知",
-//                 "sign": "",
-//                 "avatar": comment.photo,
-//                 "rank": "10000",
-//                 "DisplayRank": "0",
-//                 "level_info": {
-//                     "current_level": 0,
-//                     "current_min": 0,
-//                     "current_exp": 0,
-//                     "next_exp": 0
-//                 },
-//                 "pendant": {
-//                     "pid": 0,
-//                     "name": "",
-//                     "image": "",
-//                     "expire": 0,
-//                     "image_enhance": "",
-//                     "image_enhance_frame": ""
-//                 },
-//                 "nameplate": {
-//                     "nid": 0,
-//                     "name": "",
-//                     "image": "",
-//                     "image_small": "",
-//                     "level": "",
-//                     "condition": ""
-//                 },
-//                 "official_verify": {
-//                     "type": -1,
-//                     "desc": ""
-//                 },
-//                 "vip": {
-//                     "vipType": 1,
-//                     "vipDueDate": 1611072000000,
-//                     "dueRemark": "",
-//                     "accessStatus": 0,
-//                     "vipStatus": 0,
-//                     "vipStatusWarn": "",
-//                     "themeType": 0,
-//                     "label": {
-//                         "path": "",
-//                         "text": "",
-//                         "label_theme": "",
-//                         "text_color": "",
-//                         "bg_style": 0,
-//                         "bg_color": "",
-//                         "border_color": ""
-//                     },
-//                     "avatar_subscript": 0,
-//                     "nickname_color": ""
-//                 },
-//                 "fans_detail": null,
-//                 "following": 0,
-//                 "is_followed": 0,
-//                 "user_sailing": {
-//                     "pendant": null,
-//                     "cardbg": null,
-//                     "cardbg_with_focus": null
-//                 },
-//                 "is_contractor": false
-//             },
-//             "content": {
-//                 "message": comment.time + '\n' + comment.text,
-//                 "plat": 2,
-//                 "device": "",
-//                 "members": [],
-//                 "jump_url": {},
-//                 "max_line": 6
-//             },
-//             "replies": null,
-//             "assist": 0,
-//             "folder": {
-//                 "has_folded": false,
-//                 "is_folded": false,
-//                 "rule": "https://www.bilibili.com/blackboard/foldingreply.html"
-//             },
-//             "up_action": {
-//                 "like": false,
-//                 "reply": false
-//             },
-//             "show_follow": show_follow,
-//             "invisible": false
-//         }
-//         data.data.replies.push(s)
-//     }
-//     return head + JSON.stringify(data) + ')'
-// }
-//
-// var onBeforeSendHeadersListener = function (details) {
-//     // view request + headers to be send
-//     console.log(details);
-//
-//     // block XMLHttpRequests by returning object with key "cancel"
-//     if (details.type == "xmlhttprequest") {
-//         return {
-//             cancel: false
-//         };
-//     }
-//
-//     // modify the user agent of all script resources by changing the requestHeaders and then return an object with key "requestHeaders"
-//     if (details.type == "script") {
-//         for (var i = 0; i < details.requestHeaders.length; i++) {
-//             if (details.requestHeaders[i].name == "User-Agent") {
-//                 details.requestHeaders[i].value = "I'm not a bot";
-//             }
-//         }
-//         return {
-//             "requestHeaders": details.requestHeaders
-//         };
-//     }
-// }
-//
-//
-// var onBeforeRequestListener = function (details) {
-//     console.log(details)
-//     return {cancel: true}
-//
-//     let mode = /mode=(.*?)&/.exec(details.url)
-//
-//     if (mode[1] !== "3") {
-//         return {cancel: false}
-//     }
-//     let aid = /oid=(.*?)&/.exec(details.url)[1]
-//     if (!youtubeCommentDict.questPool.has(aid)) {
-//         youtubeCommentDict.questPool.add(aid)
-//         return {cancel: false}
-//     } else {
-//         youtubeCommentDict.questPool.delete(aid)
-//     }
-//     let res = buildYoutubeCommentResponse(details)
-//     if (res !== null) {
-//         // return {cancel:true}
-//         redirectUrl = 'data:application/json; charset=utf-8,' + res
-//         return {redirectUrl}
-//     } else {
-//         return {cancel: false}
-//     }
-//
-//     // all images will now be loaded from this location instead
-//     // CAREFUL! CROSS ORIGIN REQUESTS WILL NOT BE BLOCKED WITH CHROME EXTENSIONS
-//
-// }
-//
-//
-// chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {
-//     urls: ["https://s1.hdslb.com/bfs/seed/jinkela/commentpc*"]
-// }, ['blocking', 'requestBody']);
 
 
 chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
@@ -3855,6 +3768,11 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                         } catch (e) {
                             console.log(e)
                             serverError = true
+                        }
+                    }
+                    if (yuyuyu.hasOwnProperty(cid.toString())) {
+                        for (let ocid of yuyuyu[cid.toString()]) {
+                            mergeDanmu(ldanmu, (await moreFiltedHistory(ocid, 0))[0])
                         }
                     }
                     // if (youtubeUrl !== null) {
