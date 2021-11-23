@@ -2561,6 +2561,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                 "x": "100%",
                 "color": '0x' + danmu.color.toString(16),
                 "zIndex": i,
+                'bold': 0,
             };
             let fontSize = danmu.fontsize, danmuType = danmu.mode, color = danmu.color
             if ((Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
@@ -2574,11 +2575,13 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                     for (_pj_c = 0, _pj_a = lcommand, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
                         command = _pj_a[_pj_c];
                         if (command.length === 0) {
-                        } else if (command === "mincho") {
-                            argv["fontFamily"] = "Yu Mincho";
-                        } else if (command === "gothic") {
-                            argv["fontFamily"] = "Yu Gothic";
-                        } else if (command === "ender") {
+                        }
+                            // else if (command === "mincho") {
+                            //     argv["fontFamily"] = '"Yu Mincho"';
+                            // } else if (command === "gothic") {
+                            //     argv["fontFamily"] = '"Yu Gothic"';
+                        // }
+                        else if (command === "ender") {
                             fontSize += 2.5;
                         } else if (command === "invisible") {
                             argv["alpha"] = "0";
