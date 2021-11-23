@@ -2595,8 +2595,6 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
             }
             let content = danmu.content.replace(/\t/g, '    ')
             let rows = content.split('\n')
-            let increaseRow = false
-            argv['content'] = JSON.stringify(content)
             argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
             if (len(rows) > 45) {
                 argv['fontSize'] = (100 / (len(rows) * 2)).toFixed(5) + '%'
@@ -2612,7 +2610,8 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                         && (danmu.progress - lastDanmu.progress) < 1000) {
                         rowCount += lastDanmu.rows
                         content = '\n'.repeat(rowCount) + content
-                        increaseRow = true
+                    }else{
+                        rowCount = 0
                     }
                 }
                 argv['anchorX'] = 0
@@ -2632,14 +2631,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                     argv["duration"] = danmu.nico.duration + 's';
                 }
             }
-            if (!increaseRow) {
-                if (rowCount > 0) {
-                    console.log(danmu)
-                }
-                rowContent = ''
-                rowLdanmu = []
-                rowCount = 0
-            }
+            argv['content'] = JSON.stringify(content)
 
             let basBody = ["def text c" + i + " {\n"];
             for (let key in argv) {
