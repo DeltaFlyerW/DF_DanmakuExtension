@@ -69,12 +69,12 @@ function format(text, dict) {
 function editConfig(key, value) {
     if (!defaultConfig.hasOwnProperty(key)) {
         console.log('设置中不含有', key, '这一项')
-        return
+        return '修改失败'
     }
     if (typeof defaultConfig[key] !== typeof value) {
         console.log(key, '项的类型应为', typeof defaultConfig[key], '如', defaultConfig[key])
         console.log('而将要修改的值为', value, ',其类型为', typeof value)
-        return;
+        return '修改失败'
     }
     if (key === 'uidFilter') {
         if (value > 100000000) {
@@ -83,10 +83,12 @@ function editConfig(key, value) {
     }
     window.setting[key] = value
     saveConfig()
-    console.log('修改成功')
     if (key === 'uidFilter') {
-        window.crcFilter = crcFilter()
+        buildCrcFilter().then((res) => {
+            window.crcFilter = res
+        })
     }
+    return '修改成功'
 }
 
 function saveConfig() {
@@ -1866,6 +1868,7 @@ async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr =
         if (retry < 1) {
             return (await xhrGet(url, timeout, header, retry + 1))
         }
+        return null
     }
 
 }
@@ -1944,7 +1947,7 @@ async function xhrPost(option) {
 }
 
 
-function crcFilter() {
+async function buildCrcFilter() {
     'use strict';
     if (window.setting.uidFilter === -1) {
         return null
@@ -2012,7 +2015,9 @@ function crcFilter() {
     }
 }
 
-window.crcFilter = crcFilter()
+buildCrcFilter().then((res) => {
+    window.crcFilter = res
+})
 
 async function syncFilter() {
     let res = await xhrGet('https://api.bilibili.com/x/dm/filter/user?jsonp=jsonp')
@@ -2352,12 +2357,18 @@ function parseNicoServerResponse(sdanmu, startIndex = 0, encrypt = false) {
 
             content = xmlunEscape(content)
             let [vpos, date] = argv.split(',')
-            lNicoCommendObject.append({
-                date: date,
-                vpos: vpos,
-                mail: JSON.parse('"' + command + '"'),
-                content: JSON.parse('"' + content + '"')
-            })
+            try {
+                lNicoCommendObject.append({
+                    date: date,
+                    vpos: vpos,
+                    mail: JSON.parse('"' + command + '"'),
+                    content: JSON.parse('"' + content + '"')
+                })
+            } catch (e) {
+                console.log(ldanmu[i])
+                throw e
+            }
+
         }
         ldanmu = resolveNicoDanmu(lNicoCommendObject, startIndex)
         return ldanmu
@@ -2479,12 +2490,15 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
             let danmuType = 1
             let fontSize = 25
             let color = 0xffffff
-            let isBasDanmu = content.find("\n") !== -1;
+            let isBasDanmu = content.split("\n").length > 5;
+            danmu.isRaw = false
             let duration = null
             if (len(command) > 0) {
                 lcommand = JSON.parse('"' + command + '"').split(' ')
                 for (let command of lcommand) {
                     if (len(command) < 2) {
+                    } else if (command === 'raw' || command === 'owner') {
+                        danmu.isRaw = true
                     } else if (command === 'ue')
                         danmuType = 5
                     else if (command === 'shita')
@@ -2560,9 +2574,9 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
                     for (_pj_c = 0, _pj_a = lcommand, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
                         command = _pj_a[_pj_c];
                         if (command.length === 0) {
-                        } else if (command === ["mincho"]) {
+                        } else if (command === "mincho") {
                             argv["fontFamily"] = "Yu Mincho";
-                        } else if (command === ["gothic"]) {
+                        } else if (command === "gothic") {
                             argv["fontFamily"] = "Yu Gothic";
                         } else if (command === "ender") {
                             fontSize += 2.5;
@@ -3067,7 +3081,7 @@ function katakana(danmu) {
 
 function replaceKatakana(ldanmu) {
     for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
-        if (ldanmu[idanmu].content.find('\n') === -1) {
+        if (ldanmu[idanmu].mode !== 9 && !ldanmu[idanmu].nico.isRaw && ldanmu[idanmu].content.find('\n') === -1) {
             ldanmu[idanmu].content = katakana(ldanmu[idanmu].content)
         }
     }
