@@ -23,12 +23,34 @@ if (document.head) {
 
     let lastHref = null
     let lastDesc = null
+    let runningDescResolveCid = null
 
     async function getDescInfo(cid) {
-
         if (window.location.href === lastHref) {
             return lastDesc
         }
+        if (runningDescResolveCid !== cid) {
+            runningDescResolveCid = cid
+        } else {
+            console.log('descLis', cid, lastDesc, lastHref, window.location.href)
+            return await new Promise(resolve => {
+                function handle(event) {
+                    if (!event.data || !event.data.type) {
+                        return;
+                    }
+                    console.log('descLis', cid, event)
+                    if (event.data.type !== 'descCache' || event.data.cid !== cid) {
+                        return
+                    }
+                    window.removeEventListener('message', handle)
+                    resolve(event.data.desc)
+                }
+
+                window.addEventListener("message", handle)
+            })
+        }
+
+
         let youtubeUrl = null
         let nicoinfo = null
         let desc = document.querySelector('div[class^="desc-info"]')
@@ -78,24 +100,41 @@ if (document.head) {
         // console.log(playerInfo.textContent)
 
 
-        let url = document.querySelector('meta[itemprop="url"]')
         let ssid, aid
-        if (url !== null) {
-
-            ssid = /play\/ss(\d+)/.exec(document.querySelector('script[type="application/ld+json"]').textContent)
-            if (ssid) {
-                ssid = ssid[1]
-            }
+        ssid = /play\/ss(\d+)/.exec(document.querySelector('script[type="application/ld+json"]').textContent)
+        if (ssid) {
+            ssid = ssid[1]
         }
-        let ipage
+        let ipage = null
         if (ssid !== null) {
-            ipage = null
-            if (window.seasonInfo !== null) {
+            if (window.seasonInfo !== undefined) {
                 for (let i = 0; i < window.seasonInfo['result']['episodes'].length; i++) {
                     if (window.seasonInfo['result']['episodes'][i]['cid'] === parseInt(cid)) {
                         aid = window.seasonInfo['result']['episodes'][i]['aid']
                         ipage = i
                         break
+                    }
+                }
+            } else {
+                let epid = /\/ep(\d+)/.exec(window.location.href)
+                if (epid) {
+                    epid = epid[1]
+                    let data = await parse('https://bangumi.bilibili.com/view/web_api/season?ep_id=' + epid)
+                    data = JSON.parse(data)
+                    ssid = data['result']['season_id']
+                    for (let i = 0; i < data['result']['episodes'].length; i++) {
+                        if (data['result']['episodes'][i]['cid'] === parseInt(cid)) {
+                            aid = data['result']['episodes'][i]['aid']
+                            ipage = i
+                            break
+                        }
+                    }
+                } else {
+                    let data = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid))
+                    for (let i = 0; i < data.result.main_section.episodes.length; i++) {
+                        if (data.result.main_section.episodes[i].cid === parseInt(cid)) {
+                            ipage = i
+                        }
                     }
                 }
             }
@@ -110,7 +149,8 @@ if (document.head) {
         }
         lastHref = window.location.href
         lastDesc = [aid, youtubeUrl, nicoinfo, ssid, ipage]
-        return [aid, youtubeUrl, nicoinfo, ssid, ipage]
+        window.postMessage({type: 'descCache', cid: cid, desc: lastDesc})
+        return lastDesc
     }
 
 
@@ -118,9 +158,9 @@ if (document.head) {
 
 
     window.addEventListener("message", async function (event) {
-
             if (event.source !== window) return;
-            if (event.data) {
+            if (event.data.type) {
+                console.log(event.data.type, event)
                 if (event.data.type === "pakku_ajax_request") {
                     try {
                         let cid = /oid=(\d+)/.exec(event.data.arg)[1]
@@ -165,10 +205,6 @@ if (document.head) {
                                 chrome.runtime.onMessage.removeListener(handle)
                                 if (resp.data !== null && resp.ndanmu !== null) {
                                     console.log('GotDanmuFromDFex', resp.ndanmu)
-                                    let elem=document.querySelector("#danmukuBox > div > div > div.bpx-player-collapse.bui.bui-collapse > div > div > div.bui-collapse-body > div > div.bpx-player-filter-wrap.bpx-player-dm > div.bpx-player-dm-wrap > div.bpx-player-dm-load-status")
-                                    if(elem!==null){
-                                        elem.remove()
-                                    }
                                     if (skipCid !== cid) {
                                         if (ondanmu !== null) {
                                             if (Number(ondanmu.textContent) > resp.ndanmu) {
@@ -396,7 +432,7 @@ if (document.head) {
                 if (resp.type !== data.type + '_response' || resp.timeStamp !== timeStamp)
                     return;
                 chrome.runtime.onMessage.removeListener(handle)
-                resolve(resp)
+                resolve(resp.content)
             }
 
             chrome.runtime.onMessage.addListener(handle)

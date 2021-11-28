@@ -1,6 +1,6 @@
 {
   "name": "DF的弹幕扩展",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "该扩展程序致力于改善弹幕体验XD",
   "author": "DeltaFlyer",
   "permissions": [
@@ -36,6 +36,7 @@
       "all_frames": true
     }
   ],
+  "options_page": "option.html",
   "web_accessible_resources": [
     "filterWorker.js",
     "xhr_hook.js"
