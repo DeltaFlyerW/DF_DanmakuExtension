@@ -38,7 +38,11 @@ async function loadConfig() {
 async function testServer() {
     let res = await xhrGet('https://delflare505.win:800' + '/testConnect')
     if (res !== null) {
+        window.bindAid = res.split(',')
         window.danmuServerDomain = 'https://delflare505.win:800'
+    } else {
+        let res = await xhrGet(window.danmuServerDomain + '/testConnect')
+        window.bindAid = res.split(',')
     }
 }
 
@@ -1590,11 +1594,11 @@ function htmlEscape(text) {
 
 function xmlunEscape(content) {
     return content.replace('；', ';')
-        .replace('&amp;', '&')
-        .replace('&lt;', '<')
-        .replace('&gt;', '>')
-        .replace('&apos;', "'")
-        .replace('&quot;', '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '&')
+        .replace(/&gt;/g, '&')
+        .replace(/&apos;/g, '&')
+        .replace(/&quot;/g, '&')
 }
 
 function xml2danmu(sdanmu, user = null) {
@@ -1669,7 +1673,7 @@ function applyMeanOffset(ldanmu, currentDuration, expectedDuration) {
     return ldanmu
 }
 
-async function moreFiltedHistory(cid, duration, existNdanmu = 0, expectedDanmuNum = 0) {
+async function moreFiltedHistory(cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
     let date = new Date();
     date.setTime(date.getTime() - 86400000)
     console.log('GetDanmuFor CID' + cid)
@@ -1687,7 +1691,7 @@ async function moreFiltedHistory(cid, duration, existNdanmu = 0, expectedDanmuNu
 
     ldanmu = xml2danmu(sdanmu)
 
-    if (ldanmu.length < ondanmu * 0.4) {
+    if (ldanmu.length < ondanmu * 0.1) {
         return [ldanmu, ndanmu, ldanmu.length]
     }
     let isStart = true
@@ -1946,11 +1950,8 @@ async function xhrPost(option) {
             }
         )
     } catch (e) {
-        console.log('XhrError=', retry, '/', xhr, e)
-        if (option.retryCount < option.retry) {
-            option.retryCount += 1
-            return xhrPost(option)
-        }
+        console.log('XhrError=', e)
+        throw (e)
     }
 
 }
@@ -2694,7 +2695,7 @@ function resolveNicoDanmu(lNicoCommendObject, startIndex = 0) {
     return ldanmu
 }
 
-async function nicoDanmu(nicoid, startIndex = 0) {
+async function nicoDanmu(nicoid, startIndex = 0, ndanmu = 1000) {
     if (window.hasProxy === false || nicoid.startsWith('so')) {
         console.log('Found NicoID:' + nicoid)
         let url = window.danmuServerDomain + '/nico/?nicoid=' + nicoid + '&encrypt=1'
@@ -2704,7 +2705,7 @@ async function nicoDanmu(nicoid, startIndex = 0) {
         if (setting.loadNicoScript) {
             url += '&raw=1'
         }
-        url += '&niconum=' + 1000
+        url += '&niconum=' + ndanmu
         if (setting.translateThreshold) {
             url += '&translateThreshold=' + setting.translateThreshold
         }
@@ -3193,12 +3194,18 @@ corsManipulate()
 
 
 async function dmFengDanmaku(sn, startIndex = 0) {
-    let sdanmu = await xhrPost({
-        mode: 'urlEncode',
-        data: {'sn': parseInt(sn)},
-        headers: {'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-        url: 'https://ani.gamer.com.tw/ajax/danmuGet.php'
-    })
+    let sdanmu
+    try {
+        sdanmu = await xhrPost({
+            mode: 'urlEncode',
+            data: {'sn': parseInt(sn)},
+            headers: {'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+            url: 'https://ani.gamer.com.tw/ajax/danmuGet.php'
+        })
+    } catch (e) {
+        sdanmu = await xhrGet(danmuServerDomain + '/dmFeng?sn=' + sn)
+    }
+
     let sizeDict = {
         1: 25,
         2: 36,
@@ -3238,18 +3245,22 @@ let outsideFliter = [{
     ]
 }]
 
-async function getBiliVideoDuration(aid, cid) {
+async function getBiliVideoDuration(aid, cid, ipage) {
     let pagelist = JSON.parse(await xhrGet('https://api.bilibili.com/x/player/pagelist?aid=' + aid + '&jsonp=jsonp'))
     let tDuration = null
-    for (let page of pagelist.data) {
+    for (let i = 0; i < pagelist.data.length; i++) {
+        page = pagelist.data[i]
         if (page.cid === parseInt(cid)) {
             tDuration = page.duration
+            if (ipage === null) {
+                ipage = i
+            }
         }
     }
     if (tDuration === null) {
         console.log('cid', cid, 'not in', pagelist)
     }
-    return tDuration
+    return [tDuration, ipage]
 }
 
 async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null, existDanmuNum = 0) {
@@ -3286,9 +3297,13 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     }
     for (let cid of lsn) {
         if (cid['chatserver'] === 'ani.gamer.com.tw') {
-            let res = await dmFengDanmaku(cid['ss'])
-            console.log('load ss' + cid['ss'] + '(', len(res), ')')
-            ldanmu = ldanmu.concat(res)
+            try {
+                let res = await dmFengDanmaku(cid['ss'])
+                console.log('load ss' + cid['ss'] + '(', len(res), ')')
+                ldanmu = ldanmu.concat(res)
+            } catch (e) {
+                console.log(e)
+            }
         } else if (cid instanceof Array) {
             for (let dcid of cid[ipage]) {
                 ldanmu = ldanmu.concat((await moreFiltedHistory(dcid, duration))[0])
@@ -3305,26 +3320,32 @@ async function mergeOutsideDanmaku(ssid, ipage, duration, ndanmu, setting = null
     }
     ldanmu = await danmuFilter(ldanmu, outsideFliter)
     for (let sn of lsn) {
-        if (sn.chatserver === 'chat.bilibili.com') {
-            let res = []
-            let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + sn.ss))
-            let cid = data.result.main_section.episodes[ipage].cid
-            let aid = data.result.main_section.episodes[ipage].aid
-            if (sn.hasOwnProperty('offset')) {
-                res = (await moreFiltedHistory(cid, duration, existDanmuNum + len(ldanmu)))[0]
-                if (sn.offset !== 'ignore') {
-                    res = applyOffset(res, sn.offset)
+        try {
+            if (sn.chatserver === 'chat.bilibili.com') {
+                let res = []
+                let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + sn.ss))
+                let cid = data.result.main_section.episodes[ipage].cid
+                let aid = data.result.main_section.episodes[ipage].aid
+                if (sn.hasOwnProperty('offset')) {
+                    res = (await moreFiltedHistory(cid, duration, existDanmuNum + len(ldanmu)))[0]
+                    if (sn.offset !== 'ignore') {
+                        res = applyOffset(res, sn.offset)
+                    } else {
+                        let tDuration = await getBiliVideoDuration(aid, cid) - 1
+                        res = applyOffset(res, [[0, duration - tDuration]])
+                    }
                 } else {
                     let tDuration = await getBiliVideoDuration(aid, cid) - 1
-                    res = applyOffset(res, [[0, duration - tDuration]])
+                    if (Math.abs(duration - tDuration) < 3) {
+                        res = (await moreFiltedHistory(cid, duration))[0]
+                    }
                 }
-            } else {
-                let tDuration = await getBiliVideoDuration(aid, cid) - 1
-                if (Math.abs(duration - tDuration) < 3) {
-                    res = (await moreFiltedHistory(cid, duration))[0]
-                }
+                ldanmu = ldanmu.concat(res)
+            } else if (typeof (sn) === 'string' && sn[0] === 'c') {
+                ldanmu = ldanmu.concat((await moreFiltedHistory(sn.slice(1)))[0])
             }
-            ldanmu = ldanmu.concat(res)
+        } catch (e) {
+            console.log(e)
         }
     }
     return ldanmu
@@ -3581,6 +3602,10 @@ function searchContent(keyword) {
 
 function searchPeriod(start, end = 0) {
     let res = []
+    if (start.toString().find('.') !== -1) {
+        let [min, sec] = start.toString().split('.')
+        start = min * 60 + parseInt(sec)
+    }
     if (end === 0) {
         end = start + 1
     }
@@ -3620,22 +3645,8 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                 let ldanmu = null, ndanmu = null
                 for (let dldanmu of window.ldldanmu) {
                     if (dldanmu['cid'] === cid) {
-                        if (dldanmu.ldanmu == null) {
-                            await new Promise(resolve => {
-                                function handle(event) {
-                                    if (event.data.type !== 'cidCache' || event.data.cid !== cid) {
-                                        return
-                                    }
-                                    ldanmu = event.data.ldanmu
-                                    ndanmu = event.data.ndanmu
-                                    window.removeEventListener('message', handle)
-                                    resolve()
-                                }
-
-                                window.addEventListener("message", handle)
-                            })
-                        }
-                        // console.log('readTemp')
+                        ldanmu = dldanmu['ldanmu']
+                        ndanmu = dldanmu['ndnamu']
                         break
                     }
                 }
@@ -3653,7 +3664,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     })
                     let duration = null
                     if (request.aid) {
-                        duration = await getBiliVideoDuration(request.aid, cid)
+                        [duration, request.ipage] = await getBiliVideoDuration(request.aid, cid, request.ipage)
                     }
                     if (window.setting.filterRule.length === 0) {
                         ret = await moreHistory(cid, duration)
@@ -3664,6 +3675,24 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     // inject_panel(tabid)
                     ldanmu = ret[0]
                     ndanmu = ret[1]
+                    for (let danmu of ldanmu) {
+                        if (danmu.midHash === "b732c665") {
+                            let extraCid = danmu.content.split(',')
+                            for (let cid of extraCid) {
+                                try {
+                                    if (cid.startswith('c')) {
+                                        mergeDanmu(ldanmu, moreFiltedHistory(c.slice(1)))
+                                    }
+                                    if (cid.startswith('sm')) {
+                                        mergeDanmu(ldanmu, nicoDanmu('sm'))
+                                        request.nicoinfo = null
+                                    }
+                                } catch (e) {
+                                    console.log(e)
+                                }
+                            }
+                        }
+                    }
                     if (ret[2] === 0 || (ret[2] < request.expectedDanmuNum && ret[2] > Math.min(ndanmu, 5000))) {
                         mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
                     }
@@ -3672,13 +3701,12 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     if (peposide !== undefined) {
                         ldanmu = ldanmu.concat(localDanmu(peposide))
                     }
-                    let nicoinfo = request.nicoinfo
-                    if (nicoinfo !== null) {
-                        console.log('Found niconicoURL:' + nicoinfo)
-                        ldanmu = ldanmu.concat(await nicoDanmu(nicoinfo))
-                    }
-                    let youtubeUrl = request.youtubeUrl
                     let serverError = false
+                    if (window.bindAid.indexOf(request.aid.toString()) !== -1) {
+                        request.ssid = 'av' + request.aid
+                        request.nicoinfo = null
+                        request.youtubeUrl = null
+                    }
                     if (request.ssid !== null) {
                         try {
                             ldanmu = ldanmu.concat(await mergeOutsideDanmaku(request.ssid, request.ipage, duration, ndanmu, null, len(ldanmu)))
@@ -3687,6 +3715,12 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                             serverError = true
                         }
                     }
+                    let nicoinfo = request.nicoinfo
+                    if (nicoinfo !== null) {
+                        console.log('Found niconicoURL:' + nicoinfo)
+                        ldanmu = ldanmu.concat(await nicoDanmu(nicoinfo, 0, ndanmu))
+                    }
+                    let youtubeUrl = request.youtubeUrl
                     if (yuyuyu.hasOwnProperty(cid.toString())) {
                         for (let ocid of yuyuyu[cid.toString()]) {
                             let [cid, oDuration] = ocid.split('&d=')
@@ -3718,7 +3752,6 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                             }
                         }
                     }
-                    window.postMessage({type: 'cidCache', cid: cid, ldanmu: ldanmu, ndanmu: ndanmu})
                 }
                 currentDanmu = ldanmu
 
@@ -3732,7 +3765,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     if (segindex === 1) {
                         console.log('total ndanmu:' + ldanmu.length)
                     }
-                    res = ldanmu_to_proto_seg(ldanmu, segindex, cid, ndanmu)
+                    res = ldanmu_to_proto_seg(ldanmu, null)
                     console.log('cid:', cid, 'segindex:', segindex, 'length', res[1])
                     res = res[0]
                 }

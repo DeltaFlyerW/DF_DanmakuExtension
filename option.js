@@ -1,6 +1,6 @@
 async function postExtension(messageType, data) {
-    if(!data){
-        data={}
+    if (!data) {
+        data = {}
     }
     let timeStamp = new Date().getTime();
     data.type = messageType
@@ -64,6 +64,7 @@ function editConfig(key, value) {
     })
     return '修改成功'
 }
+
 function format(text, dict) {
     var result = text
     var lkey = text.match(/{(.*?)}/g)
