@@ -39,7 +39,8 @@
   "options_page": "option.html",
   "web_accessible_resources": [
     "filterWorker.js",
-    "xhr_hook.js"
+    "xhr_hook.js",
+    "wshook.js"
   ],
   "manifest_version": 2
 }

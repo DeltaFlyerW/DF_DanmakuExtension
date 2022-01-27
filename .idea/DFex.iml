@@ -8,5 +8,7 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="module" module-name="DFexBackups" />
+    <orderEntry type="module" module-name="release" />
   </component>
 </module>

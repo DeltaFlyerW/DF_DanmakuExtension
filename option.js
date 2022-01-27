@@ -24,7 +24,6 @@ async function postExtension(messageType, data) {
 async function requestSetting() {
     window.setting = await postExtension('getSetting')
     help()
-
 }
 
 

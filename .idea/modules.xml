@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/DFex.iml" filepath="$PROJECT_DIR$/.idea/DFex.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../DFexBackups/.idea/DFexBackups.iml" filepath="$PROJECT_DIR$/../DFexBackups/.idea/DFexBackups.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../release/.idea/release.iml" filepath="$PROJECT_DIR$/../release/.idea/release.iml" />
     </modules>
   </component>
 </project>
