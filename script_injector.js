@@ -9,7 +9,6 @@ if (document.head) {
     let setting = postExtension('getSetting').then(function (e) {
         setting = e
     })
-    let uiInjected = false
 
     function bv2av(str) {
         const table = [...'fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF'];
@@ -136,7 +135,6 @@ if (document.head) {
         return lastDesc
     }
 
-
     let skipCid = {}
 
     chrome.runtime.onMessage.addListener(function (message) {
@@ -252,7 +250,6 @@ if (document.head) {
                     let timeStamp = event.data.timeStamp
                     await new Promise(resolve => {
                         function handle(resp, sender, sendResponse) {
-                            console.log(resp)
                             if (resp.type !== event.data.type + '_response' || resp.timeStamp !== timeStamp)
                                 return;
                             chrome.runtime.onMessage.removeListener(handle)

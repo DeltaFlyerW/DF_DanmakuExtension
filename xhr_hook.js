@@ -2,30 +2,17 @@
     'use strict'
     if (XMLHttpRequest.prototype.pakku_open) return;
 
-    async function parse(url, json = false) {
-        let res = await postExtension('parse', {url: url})
-        while (!res) {
-            sleep(2)
-            res = await postExtension('parse', {url: url})
-        }
-        if (json) {
-            return JSON.parse(res)
-        } else {
-            return res
-        }
-    }
 
     //postHook Listener
     window.addEventListener("message", function (event) {
             if (event.source !== window || !event.data || !event.data.type) return;
-            console.log(event)
+            // console.log(event.data)
             if (event.data.type === 'replaceLoadPage') {
                 eval('window.bbComment.prototype.originLoadPage=' + window.bbComment.prototype.loadPage.toString())
                 if (!window.loadPage) {
-                    window.loadPage = loadPage(event.data.lastDesc)
+                    window.loadPage = buildLoadPage(event.data.lastDesc)
                 }
                 window.bbComment.prototype.loadPage = function (i, e) {
-                    console.log('loadPage', i, e)
                     if (!window.loadPage || window.loadPage(i, e)) {
                         this.originLoadPage(i, e)
                     }
@@ -68,7 +55,6 @@
                     let segFound = false
                     for (let seg of twitchSegment) {
                         if (currentTime > seg.start && currentTime < seg.end) {
-
                             segFound = true
                             if (currentTime + 10 > seg.end) {
                                 if (!seg.cursor || seg.loading) continue
@@ -108,7 +94,6 @@
         false
     );
 
-
     async function postExtension(messageType, data) {
         let timeStamp = new Date().getTime();
         if (!data) data = {}
@@ -133,171 +118,145 @@
         )
     }
 
-    async function sleep(seconds) {
-        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
-    }
-
-
-    function bindLocalDanmu() {
-        let ldeposide = []
-        let eindex = document.querySelector('ul[class="bilibili-player-video-btn-menu"]')
-        if (eindex !== null) {
-            let leposide = eindex.querySelectorAll('li[class^="bilibili-player-video-btn-menu-list"]')
-            for (let ieposide = 0; ieposide < leposide.length; ieposide++) {
-
-                let eposide = leposide[ieposide]
-                let deposide = {
-                    isActive: eposide.getAttribute('class').indexOf('active') !== -1,
-                    cid: eposide.getAttribute('data-id'),
-                    title: eposide.textContent,
-                }
-                ldeposide.push(deposide)
-            }
-        }
-        console.log(ldeposide)
-        window.postMessage({
-            type: "bindLocalDanmu",
-            source: 'DFex',
-            arg: JSON.stringify(ldeposide)
-        }, "*");
-    }
-
-    window.bindLocalDanmu = bindLocalDanmu
-
-    function uint8array_to_arraybuffer(array) {
-        // https://stackoverflow.com/questions/37228285/uint8array-to-arraybuffer
-        return array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset);
-    }
-
-    function str_to_arraybuffer(str) {
-        // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
-        let buf = new ArrayBuffer(str.length * 2); // 2 bytes for each char
-        let bufView = new Uint16Array(buf);
-        for (let i = 0, strLen = str.length; i < strLen; i++) {
-            bufView[i] = str.charCodeAt(i);
-        }
-        return buf;
-    }
-
-    function byte_object_to_arraybuffer(obj) {
-        let ks = Object.keys(obj);
-        let buf = new ArrayBuffer(ks.length);
-        let bufView = new Uint8Array(buf);
-        ks.forEach(function (i) {
-            bufView[i] = obj[i];
-        });
-        return buf;
-    }
 
     let callbacks = {};
-
-
-    function send_msg_proxy(arg, callback, type = "pakku_ajax_request") {
-        callbacks[arg] = callback;
-        window.postMessage({
-            type: type,
-            arg: arg,
-            loadDanmu: hasLoadDanmu()
-        }, "*");
-    }
-
-    XMLHttpRequest.prototype.pakku_open = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (method, url, async, user, password) {
-        this.pakku_url = url;
-        return this.pakku_open(method, url, async === undefined ? true : async, user, password);
-    };
-    XMLHttpRequest.prototype.pakku_addEventListener = XMLHttpRequest.prototype.addEventListener;
-    XMLHttpRequest.prototype.addEventListener = function (name, callback) {
-        if (name === "load") {
-            this.pakku_load_callback = this.pakku_load_callback || [];
-            this.pakku_load_callback.push(callback);
-        }
-        return this.pakku_addEventListener(name, callback);
-    };
-    XMLHttpRequest.prototype.pakku_send = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.send = function (arg) {
-        if ((this.pakku_url.indexOf("list.so") !== -1
-            || this.pakku_url.indexOf('seg.so') !== -1) && this.pakku_url.indexOf('data.bilibili.com') === -1
-        ) {
-            // || this.pakku_url.indexOf('web-interface/view') !== -1) {
-            // injectUI()
-            let link = document.createElement("a");
-            link.href = this.pakku_url;
-            this.pakku_url = link.href;
-            let that = this;
-            console.log(this.pakku_url)
-            if (this.pakku_load_callback || this.onreadystatechange !== null) {
-                send_msg_proxy(that.pakku_url, function (resp) {
-
-                    if (!resp || !resp.data) return that.pakku_send(arg);
-                    Object.defineProperty(that, "response", {
-                        writable: true
-                    });
-                    Object.defineProperty(that, "responseText", {
-                        writable: true
-                    });
-                    Object.defineProperty(that, "readyState", {
-                        writable: true
-                    });
-                    Object.defineProperty(that, "status", {
-                        writable: true
-                    });
-                    Object.defineProperty(that, "statusText", {
-                        writable: true
-                    });
-                    Object.defineProperty(that, "responseURL", {
-                        writable: true
-                    });
-
-                    if (that.responseType === 'arraybuffer') {
-                        if (resp.data instanceof Uint8Array)
-                            that.response = uint8array_to_arraybuffer(resp.data);
-                        else if (resp.data instanceof Object) // uint8arr object representation {0: ord, 1: ord, ...}
-                            that.response = byte_object_to_arraybuffer(resp.data);
-                        else // maybe str
-                            that.response = str_to_arraybuffer(resp.data);
-                        that.responseURL = 'file:'
-                    } else {
-                        that.response = that.responseText = resp.data;
-                    }
-                    // console.log(resp.data)
-                    that.readyState = 4;
-                    that.status = 200;
-                    that.statusText = "Pakku OK";
-                    console.log("pakku ajax: got tampered response for", that.pakku_url);
-                    that.abort();
-                    if (that.pakku_load_callback) {
-                        for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
-                    }
-                    if (that.onreadystatechange) {
-                        that.onreadystatechange()
-                    }
-                });
-            } else {
-                console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
-                return that.pakku_send(arg);
+    (function pakkuXhrHook() {
+        // https://github.com/xmcp/pakku.js/blob/master/pakkujs/assets/xhr_hook.js
+        XMLHttpRequest.prototype.pakku_open = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function (method, url, async, user, password) {
+            this.pakku_url = url;
+            return this.pakku_open(method, url, async === undefined ? true : async, user, password);
+        };
+        XMLHttpRequest.prototype.pakku_addEventListener = XMLHttpRequest.prototype.addEventListener;
+        XMLHttpRequest.prototype.addEventListener = function (name, callback) {
+            if (name === "load") {
+                this.pakku_load_callback = this.pakku_load_callback || [];
+                this.pakku_load_callback.push(callback);
             }
-        } else if (this.pakku_url.indexOf('season?ep_id') !== -1) {
-            console.log('hook seasonInfo')
-            this.pakku_addEventListener('readystatechange', function (s) {
-                if (4 === s.target.readyState) {
-                    console.log('post seasonInfo')
-                    window.postMessage({
-                        type: 'seasonInfo',
-                        arg: s.target.responseText
-                    }, "*");
+            return this.pakku_addEventListener(name, callback);
+        };
+        XMLHttpRequest.prototype.pakku_send = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = (function () {
+            function uint8array_to_arraybuffer(array) {
+                // https://stackoverflow.com/questions/37228285/uint8array-to-arraybuffer
+                return array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset);
+            }
+
+            function str_to_arraybuffer(str) {
+                // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
+                let buf = new ArrayBuffer(str.length * 2); // 2 bytes for each char
+                let bufView = new Uint16Array(buf);
+                for (let i = 0, strLen = str.length; i < strLen; i++) {
+                    bufView[i] = str.charCodeAt(i);
                 }
-            })
-            return this.pakku_send(arg)
-        } else {
-            if (this.pakku_url.indexOf('https://api.bilibili.com/x/v2/dm/post') !== -1) {
-                console.log('dfex', this.pakku_url)
+                return buf;
             }
-            return this.pakku_send(arg)
-        }
-    };
 
-    (function () {
+            function byte_object_to_arraybuffer(obj) {
+                let ks = Object.keys(obj);
+                let buf = new ArrayBuffer(ks.length);
+                let bufView = new Uint8Array(buf);
+                ks.forEach(function (i) {
+                    bufView[i] = obj[i];
+                });
+                return buf;
+            }
+
+            function send_msg_proxy(arg, callback, type = "pakku_ajax_request") {
+                callbacks[arg] = callback;
+                window.postMessage({
+                    type: type,
+                    arg: arg,
+                    loadDanmu: hasLoadDanmu()
+                }, "*");
+            }
+
+            return function (arg) {
+                if ((this.pakku_url.indexOf("list.so") !== -1
+                    || this.pakku_url.indexOf('seg.so') !== -1) && this.pakku_url.indexOf('data.bilibili.com') === -1
+                ) {
+                    // || this.pakku_url.indexOf('web-interface/view') !== -1) {
+                    // injectUI()
+                    let link = document.createElement("a");
+                    link.href = this.pakku_url;
+                    this.pakku_url = link.href;
+                    let that = this;
+                    console.log(this.pakku_url)
+                    if (this.pakku_load_callback || this.onreadystatechange !== null) {
+                        send_msg_proxy(that.pakku_url, function (resp) {
+
+                            if (!resp || !resp.data) return that.pakku_send(arg);
+                            Object.defineProperty(that, "response", {
+                                writable: true
+                            });
+                            Object.defineProperty(that, "responseText", {
+                                writable: true
+                            });
+                            Object.defineProperty(that, "readyState", {
+                                writable: true
+                            });
+                            Object.defineProperty(that, "status", {
+                                writable: true
+                            });
+                            Object.defineProperty(that, "statusText", {
+                                writable: true
+                            });
+                            Object.defineProperty(that, "responseURL", {
+                                writable: true
+                            });
+
+                            if (that.responseType === 'arraybuffer') {
+                                if (resp.data instanceof Uint8Array)
+                                    that.response = uint8array_to_arraybuffer(resp.data);
+                                else if (resp.data instanceof Object) // uint8arr object representation {0: ord, 1: ord, ...}
+                                    that.response = byte_object_to_arraybuffer(resp.data);
+                                else // maybe str
+                                    that.response = str_to_arraybuffer(resp.data);
+                                that.responseURL = 'file:'
+                            } else {
+                                that.response = that.responseText = resp.data;
+                            }
+                            // console.log(resp.data)
+                            that.readyState = 4;
+                            that.status = 200;
+                            that.statusText = "Pakku OK";
+                            console.log("pakku ajax: got tampered response for", that.pakku_url);
+                            that.abort();
+                            if (that.pakku_load_callback) {
+                                for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
+                            }
+                            if (that.onreadystatechange) {
+                                that.onreadystatechange()
+                            }
+                        });
+                    } else {
+                        console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
+                        return that.pakku_send(arg);
+                    }
+                } else if (this.pakku_url.indexOf('season?ep_id') !== -1) {
+                    console.log('hook seasonInfo')
+                    this.pakku_addEventListener('readystatechange', function (s) {
+                        if (4 === s.target.readyState) {
+                            console.log('post seasonInfo')
+                            window.postMessage({
+                                type: 'seasonInfo',
+                                arg: s.target.responseText
+                            }, "*");
+                        }
+                    })
+                    return this.pakku_send(arg)
+                } else {
+                    if (this.pakku_url.indexOf('https://api.bilibili.com/x/v2/dm/post') !== -1) {
+                        console.log('dfex', this.pakku_url)
+                    }
+                    return this.pakku_send(arg)
+                }
+            };
+        })();
+        return true
+    })();
+
+    (function closureExpose() {
         if (window.top.closure && window.top.closure.danmakuPlayer) return;
         let widgetsJsonpString = null
         if (window.top.nanoWidgetsJsonp && !window.top.nanoWidgetsJsonp.pakku_push) {
@@ -361,7 +320,7 @@
             }
         }
         console.log(window.nanoWidgetsJsonp)
-    })()
+    })();
 
     let youtubeManager = {
         youtubeId: null,
@@ -374,7 +333,24 @@
         commentList: []
     }
 
-    function loadPage(lastDesc,) {
+    function buildLoadPage(lastDesc,) {
+        async function sleep(seconds) {
+            await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        }
+
+        async function parse(url, json = false) {
+            let res = await postExtension('parse', {url: url})
+            while (!res) {
+                sleep(2)
+                res = await postExtension('parse', {url: url})
+            }
+            if (json) {
+                return JSON.parse(res)
+            } else {
+                return res
+            }
+        }
+
         if (youtubeManager.lastHref !== window.location.href) {
             youtubeManager = {
                 youtubeId: null,
@@ -522,9 +498,10 @@
             let ret = await parse(
                 url, true
             )
+            console.log(ret)
             let dComment = ret[0]
             youtubeManager.endpoint = ret[1]
-            youtubeManager.ytcfg = ret[2]
+            if (ret[2]) youtubeManager.ytcfg = ret[2]
             youtubeManager.session_token = ret['session_token']
             let commentList = document.querySelector("#comment > div > div.comment > div > div.comment-list")
 
@@ -542,7 +519,6 @@
                             return
                         }
                         let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
-                        console.log(youtubeManager)
                         url += '&context=' + encodeURIComponent(JSON.stringify([replyButton.continuationEndpoint, youtubeManager.ytcfg]))
                         ret = await parse(
                             url, true
@@ -558,7 +534,6 @@
                             replyButton.childNodes[0].data = '更多'
                             replyButton.continuationEndpoint = ret[1]
                             replyButton.querySelector('a[class="btn-more"]').textContent = '点击加载'
-
                         } else {
                             replyButton.style.display = 'none'
                         }
@@ -627,10 +602,6 @@
         }
     }
 
-    function hookSeek() {
-
-    }
-
     let loadDanmu = null
 
     function hasLoadDanmu() {
@@ -640,7 +611,4 @@
     }
 
     console.log("pakku ajax: hook set");
-
-
-})
-();
+})();
