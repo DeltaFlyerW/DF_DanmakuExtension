@@ -21,7 +21,6 @@ if (document.head) {
             result += table.indexOf(str[s[i]]) * 58 ** i;
             i += 1;
         }
-        ;
         return result - add ^ xor
     }
 
@@ -100,6 +99,9 @@ if (document.head) {
                         break
                     }
                 }
+                if (ipage === null) {
+                    debugger
+                }
             } else {
                 ssid = /play\/ss(\d+)/.exec(window.location.href)
                 if (ssid) {
@@ -110,6 +112,9 @@ if (document.head) {
                             aid = data.result.main_section.episodes[i].aid
                             ipage = i
                         }
+                    }
+                    if (ipage === null) {
+                        debugger
                     }
                 } else {
                     let epid = /\/ep(\d+)/.exec(window.location.href)
@@ -123,6 +128,9 @@ if (document.head) {
                             break
                         }
                     }
+                    if (ipage === null) {
+                        debugger
+                    }
                 }
             }
         } else {
@@ -132,11 +140,13 @@ if (document.head) {
         }
         lastHref = window.location.href
         lastDesc = [aid, ssid, ipage, extraInfo]
+        window.postMessage({type: 'descLoad', 'desc': lastDesc}, '*')
         return lastDesc
     }
 
-    let skipCid = {}
 
+    let skipCid = {}
+    let episodeUrlToBeReplace = []
     chrome.runtime.onMessage.addListener(function (message) {
         if (message.cid === currentCid) {
             window.postMessage(message)
@@ -245,7 +255,18 @@ if (document.head) {
                     window.seasonInfo = JSON.parse(event.data.arg)
                 } else if (event.data.type === 'queryDesc') {
 
-                } else if (event.data.source === 'DFex') {
+                } else if (event.data.type === 'replaceEpisodeUrl') {
+                    let info = JSON.parse(event.data.info)
+                    for (let episode of episodeUrlToBeReplace) {
+                        let bvid = episode[0], elem = episode[1]
+                        for (let card of info['data']['cards']) {
+                            if (card['desc']['bvid'] === bvid) {
+                                elem.setAttribute('href', JSON.parse(card['card'])['redirect_url'])
+                            }
+                        }
+                    }
+                }
+                if (event.data.source === 'DFex') {
                     chrome.runtime.sendMessage(event.data);
                     let timeStamp = event.data.timeStamp
                     await new Promise(resolve => {
@@ -273,11 +294,29 @@ if (document.head) {
                 if (document.querySelector('li[class^="youtube-comment"]')) {
                     return
                 }
-                if (lastDesc === null) {
-                    lastDesc =await getDescInfo()
+                if (!lastDesc) {
+                    lastDesc = await new Promise((resolve) => {
+                            let handle = (event) => {
+                                if (event.source === window && event.data
+                                    && event.data.type === 'descLoad') {
+                                    window.removeEventListener('message', handle)
+                                    resolve(event.data.desc)
+                                }
+                            }
+                            window.addEventListener("message", handle, false);
+                        }
+                    )
                 }
                 if (lastDesc[3].youtube) {
                     postHook('replaceLoadPage', {'lastDesc': lastDesc})
+                }
+            }
+            if (msg.target.className === "main-content") {
+                if (msg.target.querySelector('a[href="//space.bilibili.com/11783021/dynamic" ]')) {
+                    let elem = msg.target.querySelector('a[href^="//www.bilibili.com/video/BV"]')
+                    if (!elem) return
+                    let bvid = /(BV.*?$)/.exec(elem.getAttribute('href'))
+                    if (bvid) episodeUrlToBeReplace.push([bvid[0], elem])
                 }
             }
         }

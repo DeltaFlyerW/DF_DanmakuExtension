@@ -13,12 +13,24 @@ let defaultConfig = {
     uidFilter: -1,
     filterRule: [
         {
-            string: ['⎛', '[ohh'],
+            string: ['⎛', '[oh'],
         }
     ],
     version: '2.0'
 };
+let danmuServerDomain, hasProxy, ldldanmu, bindAid, extensionSetting, crcFilter
+console.log('test', test);
 
+async function testServer() {
+    danmuServerDomain = 'http://152.32.146.234:400'
+    let res = await xhrGet(danmuServerDomain + '/testConnect')
+    if (res == null) {
+        danmuServerDomain = 'https://delflare505.win:800'
+        res = await xhrGet(danmuServerDomain + '/testConnect')
+    }
+    if (res)
+        bindAid = res.split(',')
+}
 
 (async function loadConfig() {
     function format(text, dict) {
@@ -40,61 +52,44 @@ let defaultConfig = {
             '    nicoDanmuRate:  {nicoDanmuRate}, 将加载3000*{nicoDanmuRate}条的N站弹幕\n' +
             '    translateNicoComment: {translateNicoComment}, 翻译N站弹幕\n' +
             '    translateThreshold: {translateThreshold}, 长度在{translateThreshold}以下的N站弹幕将不会被翻译\n' +
-            '    replaceKatakana: {replaceKatakana}, 将未翻译的N站弹幕中的片假名替换为罗马字', window.setting))
+            '    replaceKatakana: {replaceKatakana}, 将未翻译的N站弹幕中的片假名替换为罗马字', extensionSetting))
         console.log('如需修改设置,请按')
         console.log('editConfig("danmuRate",3)')
         console.log('的格式输入')
     }
 
-    async function testServer() {
-        let res = await xhrGet('https://delflare505.win:800' + '/testConnect')
-        if (res !== null) {
-            window.bindAid = res.split(',')
-            window.danmuServerDomain = 'https://delflare505.win:800'
-        } else {
-            let res = await xhrGet(window.danmuServerDomain + '/testConnect')
-            if (res !== null) {
-                window.bindAid = res.split(',')
-            } else {
-                window.bindAid = []
-            }
-        }
-    }
-
     function initConfig() {
-        window.setting = defaultConfig
+        extensionSetting = defaultConfig
     }
 
     // console.log(localStorage)
-    window.setting = {};
+    extensionSetting = {};
     if (!test) {
         try {
-            window.setting = JSON.parse(localStorage['setting'])
-            for (let key of Object.keys(window.setting)) {
+            extensionSetting = JSON.parse(localStorage['setting'])
+            for (let key of Object.keys(extensionSetting)) {
                 if (defaultConfig[key] === undefined) {
-                    delete window.setting[key]
+                    delete extensionSetting[key]
                 }
             }
             for (let key of Object.keys(defaultConfig)) {
-                if (window.setting[key] === undefined) {
-                    window.setting[key] = defaultConfig[key]
+                if (extensionSetting[key] === undefined) {
+                    extensionSetting[key] = defaultConfig[key]
                 }
             }
-            localStorage['setting'] = JSON.stringify(window.setting)
+            localStorage['setting'] = JSON.stringify(extensionSetting)
         } catch (e) {
             console.log(e)
             initConfig()
-            saveConfig();
+            localStorage['setting'] = JSON.stringify(extensionSetting)
         }
     } else initConfig()
-    // window.hasProxy = ((await xhrGet('https://anime.nicovideo.jp/free/?from=nanime_side')) !== null)
-    // window.hasProxy = true
-    window.hasProxy = false
+    hasProxy = false
     help()
-    window.danmuServerDomain = 'http://152.32.146.234:400'
-    testServer()
-    // console.log(defaultConfig)
-    window.ldldanmu = [];
+    ldldanmu = [];
+    buildCrcFilter().then((res) => {
+        crcFilter = res
+    })
 })();
 
 function editConfig(key, value) {
@@ -112,25 +107,18 @@ function editConfig(key, value) {
             console.log('不推荐用户uid过滤大于一亿')
         }
     }
-    window.setting[key] = value
-    localStorage['setting'] = JSON.stringify(window.setting)
+    extensionSetting[key] = value
+    localStorage['setting'] = JSON.stringify(extensionSetting)
     if (key === 'uidFilter') {
         buildCrcFilter().then((res) => {
-            window.crcFilter = res
+            crcFilter = res
         })
     }
     return '修改成功'
 }
 
-function len(object) {
-    return object.length
-}
 
-function str(object) {
-    return object.toString()
-}
-
-(function util() {
+let [str, len, searchContent, searchPeriod] = (function util() {
     Array.prototype.sortMultiParameter = function (parameters) {
         this.sort(function (a, b) {
             for (let p of parameters) {
@@ -154,154 +142,41 @@ function str(object) {
     }
     String.prototype.find = String.prototype.indexOf
     String.prototype.startswith = String.prototype.startsWith
-})()
-
-function searchContent(keyword) {
-    let res = []
-    for (let danmu of window.ldldanmu[window.ldldanmu.length - 1].ldanmu) {
-        if (danmu.content.indexOf(keyword) !== -1) {
-            console.log(danmu)
-            res.push(danmu)
-        }
-    }
-    return res
-}
-
-function searchPeriod(start, end = 0) {
-    let res = []
-    if (start.toString().indexOf('.') !== -1) {
-        let [min, sec] = start.toString().split('.')
-        start = min * 60 + parseInt(sec)
-    }
-    if (end === 0) {
-        end = start + 1
-    }
-    for (let danmu of window.ldldanmu[window.ldldanmu.length - 1].ldanmu) {
-        if (danmu.progress / 1000 >= start && danmu.progress / 1000 < end) {
-            console.log(danmu)
-            res.push(danmu)
-        }
-    }
-    return res
-}
-
-async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr = false) {
-    console.log('Get', url)
-    const xhr = new XMLHttpRequest();
-    try {
-        if (timeout !== null) {
-            xhr.timeout = timeout
-        }
-        xhr.open("get", url, true);
-        if (header !== null) {
-            for (let key in header) {
-                xhr.setRequestHeader(key, header[key])
-            }
-        }
-        xhr.send()
-
-        return new Promise(
-            (resolve) => {
-                xhr.onreadystatechange = async () => {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            if (returnXhr) {
-                                resolve(xhr)
-                            } else {
-                                resolve(xhr.responseText)
-                            }
-                        } else {
-                            console.log('XhrError=', retry, '/', xhr)
-                            if (retry < 1) {
-                                resolve(await xhrGet(url, timeout, header, retry + 1), returnXhr)
-                            } else {
-                                resolve(null)
-                            }
-                        }
-                    }
+    return [function str(object) {
+        return object.toString()
+    },
+        function len(object) {
+            return object.length
+        },
+        function searchContent(keyword) {
+            let res = []
+            for (let danmu of ldldanmu[ldldanmu.length - 1].ldanmu) {
+                if (danmu.content.indexOf(keyword) !== -1) {
+                    console.log(danmu)
+                    res.push(danmu)
                 }
             }
-        )
-    } catch (e) {
-        console.log('XhrError=', retry, '/', xhr, e)
-        if (window.danmuServerDomain === 'https://delflare505.win:800') window.danmuServerDomain = 'http://152.32.146.234:400'
-        if (retry < 1) {
-            return (await xhrGet(url, timeout, header, retry + 1))
-        }
-        return null
-    }
-
-}
-
-async function xhrPost(option) {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", option.url, true);
-
-    if (!option.mode) {
-        option.mode = 'json'
-    }
-    if (option.timeout) {
-        xhr.timeout = option.timeout
-    }
-    if (option.headers) {
-        for (let key in option.headers) {
-            xhr.setRequestHeader(key, option.headers[key])
-        }
-    }
-    if (!option.retry) {
-        option.retry = 0
-    }
-    if (!option.retryCount) {
-        option.retryCount = 0
-    }
-    if (option.contentType) {
-        xhr.setRequestHeader('Content-Type', option.contentType);
-    }
-    if (option.debug) {
-        console.log('Post', option)
-    }
-    try {
-        if (option.mode === 'json') {
-            xhr.send(JSON.stringify(option.data))
-        } else {
-            // 'urlEncode'
-            var sdata = "";
-            for (var x in option.data) {
-                sdata += encodeURIComponent(x) + "=" + encodeURIComponent(option.data[x]) + '&';
+            return res
+        },
+        function searchPeriod(start, end = 0) {
+            let res = []
+            if (start.toString().indexOf('.') !== -1) {
+                let [min, sec] = start.toString().split('.')
+                start = min * 60 + parseInt(sec)
             }
-            sdata = sdata.slice(0, sdata.length - 1)
-            if (option.debug) {
-                console.log('PostLength', sdata.length)
+            if (end === 0) {
+                end = start + 1
             }
-            xhr.send(sdata)
-        }
-
-        return new Promise(
-            (resolve) => {
-                xhr.onreadystatechange = async () => {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            resolve(xhr.responseText)
-                        } else {
-                            console.log('XhrError=', option.retryCount, '/', xhr)
-                            if (option.retryCount < option.retry) {
-                                option.retryCount += 1
-                                resolve(await xhrPost(option))
-                            } else {
-                                resolve(null)
-                            }
-                        }
-                    }
+            for (let danmu of ldldanmu[ldldanmu.length - 1].ldanmu) {
+                if (danmu.progress / 1000 >= start && danmu.progress / 1000 < end) {
+                    console.log(danmu)
+                    res.push(danmu)
                 }
             }
-        )
-    } catch (e) {
-        console.log('XhrError=', e)
-        throw (e)
-    }
-
-}
-
+            return res
+        },
+    ]
+})();
 (function corsManipulate() {
     function getHeaderIndex(headerArray, newHeader) {
 
@@ -401,39 +276,124 @@ async function xhrPost(option) {
     return true
 })();
 
-let downloadDanmaku = function () {
-    function genxml(ldanmu, ndanmu, cid) {
-        let head = '<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><chatid>' + cid.toString() + '</chatid><mission>0</mission><maxlimit>' + ndanmu.toString() + '</maxlimit><state>0</state><real_name>0</real_name><source>DF</source><d p=';
-        return head + ldanmu.join('</d><d p=') + '</d></i>'
-    }
 
-    function danmuObject2XML(ldanmu) {
-        for (let i = 0, length = ldanmu.length; i < length; i++) {
-            let danmu = ldanmu[i]
-            ldanmu[i] = `<d p="${danmu.progress / 1000},${danmu.mode},${danmu.fontsize},${danmu.color},${danmu.ctime},${0},${danmu.midHash},${danmu.idStr}">${htmlEscape(danmu.content)}<\d>`
+async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr = false) {
+    console.log('Get', url)
+    const xhr = new XMLHttpRequest();
+    try {
+        if (timeout !== null) {
+            xhr.timeout = timeout
         }
-        return ldanmu
-    }
-
-    function htmlEscape(text) {
-        return text.replace(/[<>"&]/g, function (match, pos, originalText) {
-            switch (match) {
-                case "<":
-                    return "&lt;";
-                case ">":
-                    return "&gt;";
-                case "&":
-                    return "&amp;";
-                case "\"":
-                    return '"';
+        xhr.open("get", url, true);
+        if (header !== null) {
+            for (let key in header) {
+                xhr.setRequestHeader(key, header[key])
             }
-        });
+        }
+        xhr.send()
+
+        return new Promise(
+            (resolve) => {
+                xhr.onreadystatechange = async () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            if (returnXhr) {
+                                resolve(xhr)
+                            } else {
+                                resolve(xhr.responseText)
+                            }
+                        } else {
+                            console.log('XhrError=', retry, '/', xhr)
+                            if (retry < 1) {
+                                resolve(await xhrGet(url, timeout, header, retry + 1), returnXhr)
+                            } else {
+                                resolve(null)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    } catch (e) {
+        console.log('XhrError=', retry, '/', xhr, e)
+        if (danmuServerDomain === 'https://delflare505.win:800') danmuServerDomain = 'http://152.32.146.234:400'
+        if (retry < 1) {
+            return (await xhrGet(url, timeout, header, retry + 1))
+        }
+        return null
     }
 
-    return function (ldanmu) {
-        return genxml(danmuObject2XML(ldanmu))
-    }
 }
+
+async function xhrPost(option) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", option.url, true);
+
+    if (!option.mode) {
+        option.mode = 'json'
+    }
+    if (option.timeout) {
+        xhr.timeout = option.timeout
+    }
+    if (option.headers) {
+        for (let key in option.headers) {
+            xhr.setRequestHeader(key, option.headers[key])
+        }
+    }
+    if (!option.retry) {
+        option.retry = 0
+    }
+    if (!option.retryCount) {
+        option.retryCount = 0
+    }
+    if (option.contentType) {
+        xhr.setRequestHeader('Content-Type', option.contentType);
+    }
+    if (option.debug) {
+        console.log('Post', option)
+    }
+    try {
+        if (option.mode === 'json') {
+            xhr.send(JSON.stringify(option.data))
+        } else {
+            // 'urlEncode'
+            var sdata = "";
+            for (var x in option.data) {
+                sdata += encodeURIComponent(x) + "=" + encodeURIComponent(option.data[x]) + '&';
+            }
+            sdata = sdata.slice(0, sdata.length - 1)
+            if (option.debug) {
+                console.log('PostLength', sdata.length)
+            }
+            xhr.send(sdata)
+        }
+
+        return new Promise(
+            (resolve) => {
+                xhr.onreadystatechange = async () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            resolve(xhr.responseText)
+                        } else {
+                            console.log('XhrError=', option.retryCount, '/', xhr)
+                            if (option.retryCount < option.retry) {
+                                option.retryCount += 1
+                                resolve(await xhrPost(option))
+                            } else {
+                                resolve(null)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    } catch (e) {
+        console.log('XhrError=', e)
+        throw (e)
+    }
+
+}
+
 
 let currentDanmu
 
@@ -496,10 +456,14 @@ let parseNicoServerResponse = function () {
                     'nico': lNicoCommendObject[i],
                     'type': 'replace',
                 }
-                let argv = content.slice(5, content.length - 1).split('" "')
-                script['src'] = argv[0]
-                script['dest'] = argv[1]
-                for (let option of argv.slice(2)) {
+                let argv = content.split(' ')
+                if (argv[1][0] === '"') {
+                    argv[1] = argv[1].slice(1, argv[1].length - 1)
+                    argv[2] = argv[2].slice(1, argv[2].length - 1)
+                }
+                script['src'] = argv[1]
+                script['dest'] = argv[2]
+                for (let option of argv.slice(3)) {
                     if (option === '全') {
                         script['replaceAll'] = true
                     } else if (option === '含む') {
@@ -572,6 +536,9 @@ let parseNicoServerResponse = function () {
                         }
                     }
                 }
+                if (content.indexOf('03/20') !== -1) {
+                    console.log(danmu)
+                }
                 let lcommand = null
                 let danmuType = 1
                 let fontSize = 25
@@ -620,7 +587,7 @@ let parseNicoServerResponse = function () {
                     ctime: ctime,
                     fontsize: fontSize,
                     id: i + startIndex,
-                    idStr: i + startIndex.toString(),
+                    idStr: (i + startIndex).toString(),
                     midHash: name,
                     mode: danmuType,
                     progress: progress,
@@ -766,7 +733,7 @@ let parseNicoServerResponse = function () {
                 ldanmu[ldanmu.length - 1].nico.push(danmu.nico[0])
             }
         }
-        // if (window.setting.translateNicoComment) {
+        // if (extensionSetting.translateNicoComment) {
         //     ldanmu = await translateNico(ldanmu)
         // }
         ldanmu.nicoScript = lNicoScript
@@ -863,6 +830,7 @@ let parseNicoServerResponse = function () {
             }
         } else {
             ldanmu = sdanmu.split('\n')
+            ldanmu = ldanmu.reverse()
             let lNicoCommendObject = []
             for (let i = 0; i < ldanmu.length; i++) {
                 let [argv, command, content] = ldanmu[i].split('""')
@@ -885,7 +853,7 @@ let parseNicoServerResponse = function () {
             }
             ldanmu = resolveNicoDanmu(lNicoCommendObject, startIndex, name)
         }
-        if (setting.translateNicoComment && setting.replaceKatakana) {
+        if (extensionSetting.translateNicoComment && extensionSetting.replaceKatakana) {
             ldanmu = replaceKatakana((ldanmu))
         }
         return ldanmu
@@ -893,7 +861,7 @@ let parseNicoServerResponse = function () {
 }();
 
 async function twitchChat(vid, startTime, cursor) {
-    let url = window.danmuServerDomain + '/twitchChat?video_id=' + vid
+    let url = danmuServerDomain + '/twitchChat?video_id=' + vid
     if (startTime) url += '&start_time=' + startTime
     if (cursor) url += '&cursor=' + cursor
     let xhrResponse = await xhrGet(url, null, null, 0, true)
@@ -912,7 +880,7 @@ let danmuHookResponse = function () {
 
         return async function (ldanmu, filterRule = null) {
             if (filterRule === null) {
-                filterRule = setting.filterRule
+                filterRule = extensionSetting.filterRule
             }
             if (filterRule.length === 0) {
                 return ldanmu
@@ -922,7 +890,7 @@ let danmuHookResponse = function () {
             // if (setting.uidFilter !== null) {
             //     let tldanmu = []
             //     for (let i = 0; i < ldanmu.length; i += 1) {
-            //         if (window.crcFilter(ldanmu[i].midHash)) {
+            //         if (crcFilter(ldanmu[i].midHash)) {
             //             uldanmu.push(ldanmu[i])
             //         } else tldanmu.push(ldanmu[i])
             //     }
@@ -1024,10 +992,10 @@ let danmuHookResponse = function () {
                     // ldanmu = nldanmu;
                 }
             }
-            // if (window.setting.uidFilter !== null) {
+            // if (extensionSetting.uidFilter !== null) {
             //     let tldanmu = []
             //     for (let danmu of ldanmu) {
-            //         if (window.crcFilter(getDanmuUserhash(danmu))) {
+            //         if (crcFilter(getDanmuUserhash(danmu))) {
             //             tldanmu.push(danmu)
             //         }
             //     }
@@ -1041,171 +1009,38 @@ let danmuHookResponse = function () {
         }
     }();
     let nicoDanmu = function () {
-        function genNicoAPIBody(lthread, duration, isOwnerThreadReverse = false) {
-            let body = [{
-                "ping": {
-                    "content": "rs:0"
-                }
-            },
-                {
-                    "ping": {
-                        "content": "ps:0"
-                    }
-                },]
-            let ipart = 0
-            let minute = (Math.floor((duration - 1) / 60) + 1).toString()
-            let isOwnerThread = lthread[0]['isOwnerThread']
-            if (isOwnerThreadReverse) {
-                isOwnerThread = !isOwnerThread
-            }
-            for (let i = 0; i < lthread.length; i++) {
-                let part = lthread[i]
-                if (!part['isActive']) {
-                    continue
-                }
-                let thread = {
-                    "thread": part['id'].toString(),
-                    "version": "20090904",
-                    "fork": part["fork"],
-                    "language": 0,
-                    "user_id": "",
-                    "with_global": 1,
-                    "scores": 1,
-                    "nicoru": 3,
-                }
-                if (isOwnerThread && ipart === 0) {
-                    thread['res_from'] = -1000
-                    thread['version'] = '20061206'
-                }
-                body.push({'thread': thread})
-                body.push({
-                    "ping": {
-                        "content": 'pf:' + ipart.toString()
-                    }
-                })
-                body.push({
-                    "ping": {
-                        "content": 'ps:' + (ipart + 1).toString()
-                    }
-                })
-                ipart += 1
-                if (ipart > 2 || part['isLeafRequired']) {
-                    body.push({
-                        "thread_leaves": {
-                            "thread": part['id'].toString(),
-                            "fork": part["fork"],
-                            "language": 0,
-                            "user_id": "",
-                            "content": "0-" + minute.toString() + ":100,1000,nicoru:100",
-                            "scores": 1,
-                            "nicoru": 3,
-                        }
-                    })
-                    body.push({
-                        "ping": {
-                            "content": 'pf:' + ipart.toString()
-                        }
-                    })
-                    body.push({
-                        "ping": {
-                            "content": 'ps:' + (ipart + 1).toString()
-                        }
-                    })
-                    ipart += 1
-                }
-            }
-            body[body.length - 1] = {
-                "ping": {
-                    "content": "rf:0"
-                }
-            }
-            return body
-        }
-
         return async function (nicoid, startIndex = 0, ndanmu = 1000) {
-            if (window.hasProxy === false || nicoid.startsWith('so')) {
-                console.log('Found NicoID:' + nicoid)
-                let url = window.danmuServerDomain + '/nico/?nicoid=' + nicoid + '&encrypt=1'
-                if (setting.translateNicoComment) {
-                    url += '&translate=1'
-                }
-                if (setting.loadNicoScript) {
-                    url += '&raw=1'
-                }
-                url += '&niconum=' + ndanmu
-                if (setting.translateThreshold) {
-                    url += '&translateThreshold=' + setting.translateThreshold
-                }
-                let nicodanmu = await xhrGet(url)
-                if (nicodanmu === null) {
-                    return []
-                }
-                let ldanmu = parseNicoServerResponse(nicodanmu, 0, true)
-
-                console.log('ndanmu:' + ldanmu.length + ' from niconico')
-                return ldanmu
-            } else {
-                let url = 'https://comment.bilibili.com/70870.xml'
-                url = 'https://www.nicovideo.jp/watch/' + nicoid
-                let page = await xhrGet(url)
-                let apiData = /<div id="js-initial-watch-data".*?hidden><\/div>/.exec(page)
-                apiData = apiData[0]
-                let htmlObject = document.createElement('div');
-                htmlObject.innerHTML = apiData;
-                htmlObject = htmlObject.firstChild;
-                let info = JSON.parse(htmlObject.getAttribute('data-api-data'))
-                let duration = info['video']['duration']
-                let lthread
-                if (info.hasOwnProperty('commentComposite')) {
-                    lthread = info['commentComposite']['threads']
-                } else {
-                    lthread = info['comment']['threads']
-                }
-                let body = genNicoAPIBody(lthread, duration)
-                let comment = await xhrPost({
-                    url: 'https://nvcomment.nicovideo.jp/legacy/api.json',
-                    data: body
-                })
-                comment = JSON.parse(comment)
-
-                let res = []
-                for (let i = 0; i < comment.length; i++) {
-                    let c = comment[i]
-                    if (c.hasOwnProperty('chat')) {
-                        res.push(c['chat'])
-                    }
-                }
-                if (res.length === 0) {
-                    body = genNicoAPIBody(lthread, duration, true)
-                    comment = await xhrPost({
-                        url: 'https://nvcomment.nicovideo.jp/legacy/api.json',
-                        data: body
-                    })
-                    res = []
-                    for (let i = 0; i < comment.length; i++) {
-                        let c = comment[i]
-                        if (c.hasOwnProperty('chat')) {
-                            res.push(c['chat'])
-                        }
-                    }
-                }
-                return resolveNicoDanmu(res, 0)
+            console.log('Found NicoID:' + nicoid)
+            let url = danmuServerDomain + '/nico/?nicoid=' + nicoid + '&encrypt=1'
+            if (extensionSetting.translateNicoComment) {
+                url += '&translate=1'
             }
+            if (extensionSetting.loadNicoScript) {
+                url += '&raw=1'
+            }
+            url += '&niconum=' + ndanmu
+            if (extensionSetting.translateThreshold) {
+                url += '&translateThreshold=' + extensionSetting.translateThreshold
+            }
+            let nicodanmu = await xhrGet(url)
+            if (nicodanmu === null) {
+                return []
+            }
+            let ldanmu = parseNicoServerResponse(nicodanmu, 0, true)
+            console.log('ndanmu:' + ldanmu.length + ' from niconico')
+            return ldanmu
         }
     }();
 
     async function dmFengDanmaku(sn, startIndex = 0) {
         let sdanmu
-        try {
-            sdanmu = await xhrPost({
-                mode: 'urlEncode',
-                data: {'sn': parseInt(sn)},
-                headers: {'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-                url: 'https://ani.gamer.com.tw/ajax/danmuGet.php'
-            })
-        } catch (e) {
-            sdanmu = await xhrGet(danmuServerDomain + '/dmFeng?sn=' + sn)
-        }
+        sdanmu = await xhrPost({
+            mode: 'urlEncode',
+            data: {'sn': parseInt(sn)},
+            headers: {'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+            url: 'https://ani.gamer.com.tw/ajax/danmuGet.php'
+        })
+        if (sdanmu == null) return []
 
         let sizeDict = {
             1: 25,
@@ -1219,13 +1054,13 @@ let danmuHookResponse = function () {
         }
         let ldanmu = []
         let count = startIndex
-        for (let danmu of JSON.parse(sdanmu)) {
+        for (let danmu of JSON.parse(sdanmu).reverse()) {
             if (!danmu["text"]) continue
             count += 1
             ldanmu.push(
                 {
                     color: parseInt(danmu['color'].slice(1), 16),
-                    content: xmlunEscape(danmu["text"]),
+                    content: danmu["text"],
                     ctime: 10,
                     fontsize: sizeDict[danmu["size"]],
                     id: count,
@@ -1260,7 +1095,7 @@ let danmuHookResponse = function () {
             for (let danmu of nldanmu) {
                 let ida = danmu.progress * danmu.content.length * parseInt(danmu.midHash, 16)
                 if (!oldanmu.idPool.has(ida)) {
-                    if (!window.crcFilter || window.crcFilter(danmu.midHash)) {
+                    if (!crcFilter || crcFilter(danmu.midHash)) {
                         oldanmu.push(danmu)
                         oldanmu.idPool.add(ida)
                     }
@@ -2533,7 +2368,7 @@ let danmuHookResponse = function () {
             for (let idanmu = 0; idanmu < ldanmu.length; idanmu += 1) {
                 let ffilted = false
 
-                for (let ruleGroup of setting.filterRule) {
+                for (let ruleGroup of extensionSetting.filterRule) {
 
                     if (ruleGroup['color']) {
                         for (let irule = 0; irule < ruleGroup['color'].length; irule += 1) {
@@ -2661,8 +2496,14 @@ let danmuHookResponse = function () {
                         xhr.onreadystatechange = async () => {
                             if (xhr.readyState === 4) {
                                 if (xhr.status === 200) {
-                                    let lpdanmu = proto_seg.decode(new Uint8Array(xhr.response));
-                                    resolve(lpdanmu.elems)
+                                    try {
+                                        let lpdanmu = proto_seg.decode(new Uint8Array(xhr.response));
+                                        resolve(lpdanmu.elems)
+                                    } catch (e) {
+                                        console.log(e)
+                                        resolve([])
+                                    }
+
                                 } else {
                                     console.log('XhrError=', retry, '/', xhr)
                                     if (retry < 3) {
@@ -2698,11 +2539,12 @@ let danmuHookResponse = function () {
             if (ndanmu === 8000 && duration !== null) {
                 ndanmu = parseInt((duration / 24 / 60) * 3000)
             }
-
-            ldanmu = xml2danmu(sdanmu)
-
-            if (ldanmu.length < ondanmu * 0.1) {
-                return [ldanmu, ndanmu, ldanmu.length]
+            if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
+                ldanmu = xml2danmu(sdanmu)
+                // ldanmu=[]
+                if (ldanmu.length < ondanmu * 0.1) {
+                    return [ldanmu, ndanmu, ldanmu.length]
+                }
             }
             let isStart = true
             let result = null
@@ -2721,7 +2563,7 @@ let danmuHookResponse = function () {
                     result = [aldanmu, ondanmu, aldanmu.length]
                     break
                 }
-                if (!isStart && lfiltedDanmu.length > ndanmu * setting.danmuRate) {
+                if (!isStart && lfiltedDanmu.length > ndanmu * extensionSetting.danmuRate) {
                     result = [lfiltedDanmu, ondanmu, aldanmu.length]
                     break
                 }
@@ -2736,13 +2578,13 @@ let danmuHookResponse = function () {
                     isStart = false
                 }
             }
-            if (result[2] === 0 || (result[2] < request.expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
+            if (result[2] === 0 || (result[2] < expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
                 mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
             }
             return result
         }, function (ldanmu, segIndex) {
             let res = [];
-            // if (ndanmu * window.setting.danmuRate > ldanmu.length) {
+            // if (ndanmu * extensionSetting.danmuRate > ldanmu.length) {
             //     ldanmu = mergeDanmu(ldanmu,
             //         await danmuFilter(await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
             //             + cid + '&segment_index=' + segIndex))
@@ -2827,19 +2669,19 @@ let danmuHookResponse = function () {
         }]
 
 
-        function applyOffset(ldanmu, offset) {
-            let loffset = [[0, 0]].concat(offset)
+        function applyOffset(ldanmu, loffset, startOffset = null) {
             let ioffset = 0
+            if (!startOffset) startOffset = 0
             ldanmu.sort(function (a, b) {
                 return a.progress - b.progress
             })
             for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
                 if ((ioffset + 1) < loffset.length &&
-                    (ldanmu[idanmu].progress / 1000 + loffset[ioffset][1] >= loffset[ioffset + 1][0])
+                    (ldanmu[idanmu].progress / 1000 + loffset[ioffset].offset_seconds >= loffset[ioffset + 1].pos)
                 ) {
                     ioffset += 1
                 }
-                ldanmu[idanmu].progress = Math.floor(ldanmu[idanmu].progress + loffset[ioffset][1] * 1000)
+                ldanmu[idanmu].progress = Math.floor(ldanmu[idanmu].progress + loffset[ioffset].offset_seconds * 1000 + startOffset * 1000)
             }
             return ldanmu
         }
@@ -2855,9 +2697,9 @@ let danmuHookResponse = function () {
 
         return async function (callback, cid, ssid, ipage, duration, ndanmu, setting = null, existDanmuNum = 0) {
             if (setting === null) {
-                setting = window.setting
+                setting = extensionSetting
             }
-            let url = window.danmuServerDomain + '/getBindInfo?ss=' + ssid + '&index=' + ipage + '&encrypt=1'
+            let url = danmuServerDomain + '/getBindInfo?ss=' + ssid + '&index=' + ipage + '&encrypt=1'
             if (setting.translateNicoComment) {
                 url += '&translate=1'
             }
@@ -2877,49 +2719,60 @@ let danmuHookResponse = function () {
             for (let i = 0; i < lsn.length; i++) {
                 let cid = lsn[i]
                 if (typeof (cid) === 'string') {
+                    let chatserver = null
                     if (cid.startsWith('sn')) {
-                        lsn[i] = {
-                            chatserver: 'ani.gamer.com.tw',
-                            ss: Number(cid.slice(2))
-                        }
+                        chatserver = 'ani.gamer.com.tw'
+                    } else if (cid.startsWith('so') || cid.startsWith('sm')) {
+                        chatserver = 'nicovideo.jp'
+                    } else if (cid.startsWith('ss')) {
+                        chatserver = 'chat.bilibili.com'
+                    } else {
+                        continue
+                    }
+                    lsn[i] = {
+                        chatserver: chatserver,
+                        ss: parseInt(cid.slice(2))
+                    }
+                    let largv = cid.split('&')
+                    for (let j = 1; j < largv.length; j += 1) {
+                        let [key, value] = largv[j].split('=')
+                        lsn[i][key] = value
                     }
                 }
             }
-            for (let cid of lsn) {
-                if (cid['chatserver'] === 'ani.gamer.com.tw') {
-                    try {
-                        let res = await dmFengDanmaku(cid['ss'])
-                        console.log('load ss' + cid['ss'] + '(', res.length, ')')
-                        ldanmu = ldanmu.concat(res)
-                    } catch (e) {
-                        console.log(e)
-                    }
-                } else if (cid instanceof Array) {
-                    for (let dcid of cid[ipage]) {
-                        ldanmu = ldanmu.concat((await moreFiltedHistory(dcid, duration))[0])
-                    }
-                }
-            }
-            if (nicoDanmu.length > 10) {
-                let res = parseNicoServerResponse(nicoDanmu, ldanmu.length, true)
-                if (setting.replaceKatakana) {
-                    res = replaceKatakana(res)
-                }
-                console.log('load niconico(', res.length, ')')
-                ldanmu = ldanmu.concat(res)
-            }
-            ldanmu = await danmuFilter(ldanmu, outsideFliter)
-            for (let sn of lsn) {
+            for (let snDict of lsn) {
                 try {
-                    if (sn.chatserver === 'chat.bilibili.com') {
-                        let res = []
-                        let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + sn.ss))
+                    let res
+                    if (snDict['chatserver'] === 'ani.gamer.com.tw') {
+                        try {
+                            res = await dmFengDanmaku(snDict['ss'])
+                            res = await danmuFilter(res, outsideFliter)
+                            if (snDict.offset) {
+                                res.forEach(function (danmu) {
+                                    danmu.progress += snDict.offset * 1000
+                                })
+                            }
+                            console.log('load sn' + snDict['ss'] + '(', res.length, ')')
+                        } catch (e) {
+                            console.log(e)
+                        }
+                    } else if (snDict['chatserver'] === 'nicovideo.jp') {
+                        res = parseNicoServerResponse(nicoDanmu, ldanmu.length, true)
+                        res = await danmuFilter(res, outsideFliter)
+                        if (snDict.offset) {
+                            res.forEach(function (danmu) {
+                                danmu.progress += snDict.offset * 1000
+                            })
+                        }
+                    } else if (snDict.chatserver === 'chat.bilibili.com') {
+                        let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + snDict.ss))
+                        if (ipage > data.result.main_section.episodes.length - 1) continue
                         let cid = data.result.main_section.episodes[ipage].cid
                         let aid = data.result.main_section.episodes[ipage].aid
-                        if (sn.hasOwnProperty('offset')) {
+                        if (snDict.hasOwnProperty('offset')) {
                             res = (await moreFiltedHistory(cid, duration, existDanmuNum + ldanmu.length))[0]
-                            if (sn.offset !== 'ignore') {
-                                res = applyOffset(res, sn.offset)
+                            if (snDict.offset !== 'ignore') {
+                                res = applyOffset(res, snDict.offset, snDict.startOffset)
                             } else {
                                 let tDuration = await getBiliVideoDuration(aid, cid) - 1
                                 res = applyOffset(res, [[0, duration - tDuration]])
@@ -2927,16 +2780,24 @@ let danmuHookResponse = function () {
                         } else {
                             let tDuration = await getBiliVideoDuration(aid, cid) - 1
                             if (Math.abs(duration - tDuration) < 3) {
+
                                 res = (await moreFiltedHistory(cid, duration))[0]
                             }
                         }
+                    } else if (typeof (snDict) === 'string' && snDict[0] === 'c') {
+                        res = (await moreFiltedHistory(snDict.slice(1)))[0]
+                    } else if (snDict instanceof Array) {
+                        for (let dcid of snDict[ipage]) {
+                            ldanmu = ldanmu.concat((await moreFiltedHistory(dcid, duration))[0])
+                        }
+                    }
+                    if (res) {
                         ldanmu = ldanmu.concat(res)
-                    } else if (typeof (sn) === 'string' && sn[0] === 'c') {
-                        ldanmu = ldanmu.concat((await moreFiltedHistory(sn.slice(1)))[0])
                     }
                 } catch (e) {
-                    console.log(e)
+                    console.log('Error in', snDict, e)
                 }
+
             }
             if (callback) callback(ldanmu)
             return ldanmu
@@ -3105,7 +2966,7 @@ let danmuHookResponse = function () {
         return async function (callback, aid, cid, ipage, duration, ndanmu, existDanmuNum, extraInfo) {
             try {
                 let ldanmu = []
-                if (window.bindAid && window.bindAid.indexOf(aid.toString()) !== -1) {
+                if (bindAid && bindAid.indexOf(aid.toString()) !== -1) {
                     return mergeServerDanmaku('av' + aid, ipage, duration, ndanmu, null, existDanmuNum)
                 }
                 if (yuyuyu.hasOwnProperty(cid.toString())) {
@@ -3126,16 +2987,66 @@ let danmuHookResponse = function () {
                 if (callback) callback(ldanmu)
                 return ldanmu
             } catch (e) {
-                for (let i = 0; i < window.ldldanmu; i++) {
-                    if (window.ldldanmu[i]['cid'] === cid) {
-                        window.ldldanmu.splice(i, 1)
+                for (let i = 0; i < ldldanmu; i++) {
+                    if (ldldanmu[i]['cid'] === cid) {
+                        ldldanmu.splice(i, 1)
                         break
                     }
                 }
             }
         }
     }();
+    window.downloadDanmaku = function () {
+        function genxml(ldanmu, ndanmu, cid) {
+            let head = '<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><chatid>' + cid.toString() + '</chatid><mission>0</mission><maxlimit>' + ndanmu.toString() + '</maxlimit><state>0</state><real_name>0</real_name><source>DF</source>';
+            return head + ldanmu.join('') + '</i>'
+        }
 
+        function danmuObject2XML(ldanmu) {
+            for (let i = 0, length = ldanmu.length; i < length; i++) {
+                let danmu = ldanmu[i]
+                ldanmu[i] = `<d p="${danmu.progress / 1000},${danmu.mode},${danmu.fontsize},${danmu.color},${danmu.ctime},${0},${danmu.midHash},${danmu.idStr}">${htmlEscape(danmu.content)}</d>`
+            }
+            return ldanmu
+        }
+
+        function htmlEscape(text) {
+            text = text.replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f]/g, ' ')
+            return text.replace(/[<>"&]/g, function (match, pos, originalText) {
+                switch (match) {
+                    case "<":
+                        return "&lt;";
+                    case ">":
+                        return "&gt;";
+                    case "&":
+                        return "&amp;";
+                    case "\"":
+                        return '"';
+                }
+            });
+        }
+
+        function downloadFile(fileName, content) {
+            aLink = document.createElement('a');
+
+            aLink.download = fileName;
+            aLink.href = "data:text/plain," + content;
+            aLink.click()
+        }
+
+        return async function (cid, ndanmu = 6000) {
+            let ldanmu
+            if (cid.startsWith('sn')) {
+                ldanmu = await dmFengDanmaku(cid.slice(2))
+            } else if (cid.startsWith('so') || cid.startsWith('sm')) {
+                ldanmu = await nicoDanmu(cid, 0, ndanmu)
+            } else {
+                ldanmu = (await moreFiltedHistory(cid))[0]
+                cid = 'cid' + cid
+            }
+            return downloadFile(cid + '.xml', genxml(danmuObject2XML(ldanmu), 0, 0))
+        }
+    }();
     return async function (request, sendResponseAsync) {
         if (request.url.indexOf('.so') !== -1) {
             console.log(request.type, request);
@@ -3146,14 +3057,14 @@ let danmuHookResponse = function () {
                     loadDanmakuCallback = function (ldanmu, twitch = false) {
                         console.log('callback', ldanmu, cid)
                         if (!twitch) {
-                            for (let dldanmu of window.ldldanmu) {
+                            for (let dldanmu of ldldanmu) {
                                 if (dldanmu.cid === cid) {
                                     dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu)
                                 }
                             }
                             sendResponseAsync({type: 'load_danmaku', ldanmu: ldanmu, cid: cid})
                         } else {
-                            for (let dldanmu of window.ldldanmu) {
+                            for (let dldanmu of ldldanmu) {
                                 if (dldanmu.cid === cid) {
                                     dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu.ldanmu)
                                 }
@@ -3166,13 +3077,13 @@ let danmuHookResponse = function () {
                     }
                 }
                 if (loadDanmakuCallback && request.extraInfo.hasOwnProperty('twitch')) {
-                    twitchChat(extraInfo.twitch, 0, null)
+                    twitchChat(request.extraInfo.twitch, 0, null)
                         .then((result) => {
-                            callback(result, true)
+                            loadDanmakuCallback(result, true)
                         })
                 }
                 let ldanmu = null, ndanmu = null
-                for (let dldanmu of window.ldldanmu) {
+                for (let dldanmu of ldldanmu) {
                     if (dldanmu['cid'] === cid) {
                         ldanmu = dldanmu['ldanmu']
                         ndanmu = dldanmu['ndnamu']
@@ -3181,10 +3092,10 @@ let danmuHookResponse = function () {
                 }
 
                 if (ldanmu === null) {
-                    if (window.ldldanmu.length > 10) {
-                        window.ldldanmu.shift()
+                    if (ldldanmu.length > 10) {
+                        ldldanmu.shift()
                     }
-                    window.ldldanmu.push({
+                    ldldanmu.push({
                         "aid": request.aid,
                         'cid': cid,
                         'nicoinfo': request.nicoinfo,
@@ -3203,7 +3114,7 @@ let danmuHookResponse = function () {
                     ldanmu = ret[0]
                     ndanmu = ret[1]
                     console.log('ndanmu:' + ldanmu.length + ' from history')
-                    let peposide = setting.bindedCid[cid]
+                    let peposide = extensionSetting.bindedCid[cid]
                     if (peposide !== undefined) {
                         ldanmu = ldanmu.concat(localDanmu(peposide))
                     }
@@ -3223,17 +3134,17 @@ let danmuHookResponse = function () {
                         serverError = true
                     }
 
-                    if (window.ldldanmu.length > 10) {
-                        window.ldldanmu.shift()
+                    if (ldldanmu.length > 10) {
+                        ldldanmu.shift()
                     }
 
-                    for (let i = 0; i < window.ldldanmu.length; i += 1) {
-                        if (window.ldldanmu[i].cid === cid) {
+                    for (let i = 0; i < ldldanmu.length; i += 1) {
+                        if (ldldanmu[i].cid === cid) {
                             if (!serverError) {
-                                window.ldldanmu[i].ldanmu = ldanmu
-                                window.ldldanmu[i].ndanmu = ndanmu
+                                ldldanmu[i].ldanmu = ldanmu
+                                ldldanmu[i].ndanmu = ndanmu
                             } else {
-                                window.ldldanmu.splice(i, 1);
+                                ldldanmu.splice(i, 1);
                             }
                         }
                     }
@@ -3289,33 +3200,42 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
     }
 
     if (request.type === "ajax_hook") {
-        await danmuHookResponse(request, sendResponseAsync)
+        return await danmuHookResponse(request, sendResponseAsync)
     } else if (request.type === 'twitch_chat') {
-        sendResponseAsync(await twitchChat(request.vid, request.startTime, request.cursor))
+        return sendResponseAsync(await twitchChat(request.vid, request.startTime, request.cursor))
     } else if (request.type === "bindLocalDanmu") {
         bindPath(request)
-        sendResponseAsync()
+        return sendResponseAsync()
     } else if (request.type === "getSetting") {
-        sendResponseAsync(window.setting)
+        if (!danmuServerDomain) {
+            testServer()
+        }
+        return sendResponseAsync(extensionSetting)
+
     } else if (request.type === "editSetting") {
         editConfig(request.key, request.value)
-        saveConfig()
-        sendResponseAsync('success')
+        localStorage['setting'] = JSON.stringify(extensionSetting)
+        return sendResponseAsync('success')
     } else if (request.type === "parse") {
         if (request.url.startsWith('server::')) {
-            request.url = window.danmuServerDomain + request.url.slice(8)
+            request.url = danmuServerDomain + request.url.slice(8)
         }
-        sendResponseAsync(await xhrGet(request.url))
+        return sendResponseAsync(await xhrGet(request.url))
+    } else if (request.type === "biliplusDownloadDanmaku") {
+        console.log(request)
+        window.downloadDanmaku(request.cid)
+        return sendResponseAsync()
     }
+    return sendResponseAsync()
 });
 
-(async function buildCrcFilter() {
+async function buildCrcFilter() {
     'use strict';
-    if (window.setting.uidFilter === -1) {
+    if (extensionSetting.uidFilter === -1) {
         return null
     }
     console.log('createTable')
-    let crctable = new Uint32Array(window.setting.uidFilter)
+    let crctable = new Uint32Array(extensionSetting.uidFilter)
     let table = [0, 1996959894, 3993919788, 2567524794, 124634137, 1886057615, 3915621685, 2657392035, 249268274,
             2044508324, 3772115230, 2547177864, 162941995, 2125561021, 3887607047, 2428444049, 498536548, 1789927666,
             4089016648, 2227061214, 450548861, 1843258603, 4107580753, 2211677639, 325883990, 1684777152, 4251122042,
@@ -3352,7 +3272,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
             }
             return (crc ^ (-1)) >>> 0;
         };
-    for (let i = 0; i < window.setting.uidFilter; i += 1) {
+    for (let i = 0; i < extensionSetting.uidFilter; i += 1) {
         crctable[i] = crc32(i.toString())
     }
     crctable.sort()
@@ -3375,9 +3295,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
         }
         return false
     }
-})().then((res) => {
-    window.crcFilter = res
-});
+}
 
 
 

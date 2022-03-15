@@ -1,6 +1,6 @@
 {
   "name": "DF的弹幕扩展",
-  "version": "2.1.0",
+  "version": "2.2.1",
   "description": "该扩展程序致力于改善弹幕体验XD",
   "author": "DeltaFlyer",
   "permissions": [
@@ -31,6 +31,16 @@
       ],
       "js": [
         "script_injector.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.biliplus.com/*"
+      ],
+      "js": [
+        "biliplusPlugin.js"
       ],
       "run_at": "document_end",
       "all_frames": true

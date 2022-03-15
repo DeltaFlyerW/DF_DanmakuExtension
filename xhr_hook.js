@@ -44,9 +44,9 @@
                                 return
                             }
                         }
-                        lTwitchDanmu.push(t)
                         tldanmu.push(t)
                     })
+                    lTwitchDanmu = lTwitchDanmu.concat(tldanmu)
                     loadDanmu(tldanmu)
                 }
 
@@ -83,7 +83,12 @@
                             vid: event.data.vid
                         })
                         seg.loading = false
-                        seg.end = result.ldanmu[result.ldanmu.length - 1].progress / 1000
+                        seg.cursor = result.cursor
+                        if (result.cursor) {
+                            seg.end = result.ldanmu[result.ldanmu.length - 1].progress / 1000
+                        } else {
+                            seg.end = NaN
+                        }
                         seg.cursor = result.cursor
                         appendTwitchChat(result.ldanmu)
                     }
@@ -94,28 +99,30 @@
         false
     );
 
-    async function postExtension(messageType, data) {
+    async function postExtension(messageType, data, hasCallback = true) {
         let timeStamp = new Date().getTime();
         if (!data) data = {}
         data.type = messageType
         data.timeStamp = timeStamp
         data.source = 'DFex'
-
+        data.hasCallback = hasCallback
         window.postMessage(
             data
             , "*");
-        return await new Promise((resolve) => {
-                let handle = (event) => {
-                    if (event.source === window && event.data
-                        && event.data.type === messageType + '_response'
-                        && event.data.timeStamp === timeStamp) {
-                        window.removeEventListener('message', handle)
-                        resolve(event.data.content)
+        if (hasCallback) {
+            return await new Promise((resolve) => {
+                    let handle = (event) => {
+                        if (event.source === window && event.data
+                            && event.data.type === messageType + '_response'
+                            && event.data.timeStamp === timeStamp) {
+                            window.removeEventListener('message', handle)
+                            resolve(event.data.content)
+                        }
                     }
+                    window.addEventListener("message", handle, false);
                 }
-                window.addEventListener("message", handle, false);
-            }
-        )
+            )
+        }
     }
 
 
@@ -245,10 +252,14 @@
                         }
                     })
                     return this.pakku_send(arg)
+                } else if (this.pakku_url.indexOf('w_dyn_personal?host_uid=11783021&offset=') !== -1) {
+                    this.pakku_addEventListener('readystatechange', function (s) {
+                        if (4 === s.target.readyState) {
+                            postExtension('replaceEpisodeUrl', {info: s.target.responseText}, false)
+                        }
+                    })
+                    return this.pakku_send(arg)
                 } else {
-                    if (this.pakku_url.indexOf('https://api.bilibili.com/x/v2/dm/post') !== -1) {
-                        console.log('dfex', this.pakku_url)
-                    }
                     return this.pakku_send(arg)
                 }
             };
@@ -257,7 +268,12 @@
     })();
 
     (function closureExpose() {
-        if (window.top.closure && window.top.closure.danmakuPlayer) return;
+        try {
+            if (window.top.closure && window.top.closure.danmakuPlayer) return;
+        } catch (e) {
+            console.log(e)
+            return;
+        }
         let widgetsJsonpString = null
         if (window.top.nanoWidgetsJsonp && !window.top.nanoWidgetsJsonp.pakku_push) {
             widgetsJsonpString = 'nanoWidgetsJsonp'
@@ -287,6 +303,7 @@
                             loadDanmu = function (ldanmu) {
                                 console.log('loadDanmu', ldanmu)
                                 window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                                window.top.closure.danmakuPlayer.dmListStore.refresh()
                             }
                         }
                         if (obj[1][prop].toString().indexOf('firstPb') !== -1) {
@@ -341,7 +358,7 @@
         async function parse(url, json = false) {
             let res = await postExtension('parse', {url: url})
             while (!res) {
-                sleep(2)
+                await sleep(2)
                 res = await postExtension('parse', {url: url})
             }
             if (json) {
@@ -525,8 +542,8 @@
                         )
                         let dComment = ret[0]
 
-                        for (i = 0; i < dComment.length; i++) {
-                            let commentElement = createReply(i, dComment[i])
+                        for (let j = 0; j < dComment.length; j++) {
+                            let commentElement = createReply(j, dComment[j]);
                             replyButton.parentElement.insertBefore(commentElement, replyButton)
                         }
                         replyButton.querySelector('b').textContent = (parseInt(replyButton.querySelector('b').textContent) - dComment.length).toString()
