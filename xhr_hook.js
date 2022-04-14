@@ -252,13 +252,6 @@
                         }
                     })
                     return this.pakku_send(arg)
-                } else if (this.pakku_url.indexOf('w_dyn_personal?host_uid=11783021&offset=') !== -1) {
-                    this.pakku_addEventListener('readystatechange', function (s) {
-                        if (4 === s.target.readyState) {
-                            postExtension('replaceEpisodeUrl', {info: s.target.responseText}, false)
-                        }
-                    })
-                    return this.pakku_send(arg)
                 } else {
                     return this.pakku_send(arg)
                 }
@@ -268,6 +261,10 @@
     })();
 
     (function closureExpose() {
+        if (window.location.href.indexOf('https://www.bilibili.com/bangumi') === -1
+            && window.location.href.indexOf('https://www.bilibili.com/video') === -1) {
+            return;
+        }
         try {
             if (window.top.closure && window.top.closure.danmakuPlayer) return;
         } catch (e) {

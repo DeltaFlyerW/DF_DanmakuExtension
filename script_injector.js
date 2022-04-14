@@ -288,39 +288,36 @@ if (document.head) {
         false
     );
 
-    document.addEventListener("DOMNodeInserted", async (msg) => {
-        if (msg.target.className) {
-            if (msg.target.className === "comment-send ") {
-                if (document.querySelector('li[class^="youtube-comment"]')) {
-                    return
-                }
-                if (!lastDesc) {
-                    lastDesc = await new Promise((resolve) => {
-                            let handle = (event) => {
-                                if (event.source === window && event.data
-                                    && event.data.type === 'descLoad') {
-                                    window.removeEventListener('message', handle)
-                                    resolve(event.data.desc)
+    if (window.location.href.indexOf('https://www.bilibili.com/bangumi') ||
+        window.location.href.indexOf('https://www.bilibili.com/video')) {
+    }
+    {
+        document.addEventListener("DOMNodeInserted", async (msg) => {
+            if (msg.target.className) {
+                if (msg.target.className === "comment-send ") {
+                    if (document.querySelector('li[class^="youtube-comment"]')) {
+                        return
+                    }
+                    if (!lastDesc) {
+                        lastDesc = await new Promise((resolve) => {
+                                let handle = (event) => {
+                                    if (event.source === window && event.data
+                                        && event.data.type === 'descLoad') {
+                                        window.removeEventListener('message', handle)
+                                        resolve(event.data.desc)
+                                    }
                                 }
+                                window.addEventListener("message", handle, false);
                             }
-                            window.addEventListener("message", handle, false);
-                        }
-                    )
-                }
-                if (lastDesc[3].youtube) {
-                    postHook('replaceLoadPage', {'lastDesc': lastDesc})
-                }
-            }
-            if (msg.target.className === "main-content") {
-                if (msg.target.querySelector('a[href="//space.bilibili.com/11783021/dynamic" ]')) {
-                    let elem = msg.target.querySelector('a[href^="//www.bilibili.com/video/BV"]')
-                    if (!elem) return
-                    let bvid = /(BV.*?$)/.exec(elem.getAttribute('href'))
-                    if (bvid) episodeUrlToBeReplace.push([bvid[0], elem])
+                        )
+                    }
+                    if (lastDesc[3].youtube) {
+                        postHook('replaceLoadPage', {'lastDesc': lastDesc})
+                    }
                 }
             }
-        }
-    })
+        })
+    }
 
     async function parse(url, json) {
         let res = await postExtension('parse', {url: url})
@@ -362,6 +359,7 @@ if (document.head) {
     console.log('inject xhrhook')
     let script = document.createElement("script");
     script.src = chrome.runtime.getURL("xhr_hook.js");
+
 
     document.head.appendChild(script);
 
