@@ -2527,83 +2527,85 @@ let danmuHookResponse = function () {
             }
         }
 
-        return [async function (cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
-            let date = new Date();
-            date.setTime(date.getTime() - 86400000)
-            console.log('GetDanmuFor CID' + cid)
-            let aldanmu = [], lfiltedDanmu = [], ldanmu = []
-            let ndanmu, ondanmu
-            let url = 'https://comment.bilibili.com/' + cid + '.xml'
-            let sdanmu = null
-            while (sdanmu == null) {
-                sdanmu = await xhrGet(url)
-            }
-            ondanmu = ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
-            if (ndanmu === 8000 && duration !== null) {
-                ndanmu = parseInt((duration / 24 / 60) * 3000)
-            }
-            if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
-                ldanmu = xml2danmu(sdanmu)
-                // ldanmu=[]
-                if (ldanmu.length < ondanmu * 0.1) {
-                    return [ldanmu, ndanmu, ldanmu.length]
-                }
-            }
-            let isStart = true
-            let result = null
-            while (true) {
+        return [
+            async function (cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
+                let date = new Date();
+                date.setTime(date.getTime() - 86400000)
+                console.log('GetDanmuFor CID' + cid)
+                let aldanmu = [], lfiltedDanmu = [], ldanmu = []
+                let ndanmu, ondanmu
+                let url = 'https://comment.bilibili.com/' + cid + '.xml'
                 let sdanmu = null
-                if (isStart || ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
-                    url = "https://api.bilibili.com/x/v2/dm/web/history/seg.so?type=1&date="
-                        + getdate(date) + "&oid=" + cid.toString();
-                    console.log('ndanmu:', aldanmu.length, '/', lfiltedDanmu.length, getdate(date), url);
-                    sdanmu = loadProtoDanmu(url)
+                while (sdanmu == null) {
+                    sdanmu = await xhrGet(url)
                 }
-                let oldanmu = colorFilter(ldanmu)
-                aldanmu = mergeDanmu(aldanmu, oldanmu)
-                lfiltedDanmu = mergeDanmu(lfiltedDanmu, await danmuFilter(oldanmu))
-                if (!isStart && ldanmu.length < Math.min(ondanmu, 5000) * 0.9) {
-                    result = [aldanmu, ondanmu, aldanmu.length]
-                    break
+                ondanmu = ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
+                if (ndanmu === 8000 && duration !== null) {
+                    ndanmu = parseInt((duration / 24 / 60) * 3000)
                 }
-                if (!isStart && lfiltedDanmu.length > ndanmu * extensionSetting.danmuRate) {
-                    result = [lfiltedDanmu, ondanmu, aldanmu.length]
-                    break
-                }
-                ldanmu = await sdanmu
-                if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
-                    let firstdate = getMinDate(ldanmu) * 1000
-                    if (date.getTime() - firstdate < 86400000)
-                        firstdate = date.getTime() - 86400000;
-                    date.setTime(firstdate);
-                }
-                if (isStart) {
-                    isStart = false
-                }
-            }
-            if (result[2] === 0 || (result[2] < expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
-                mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
-            }
-            return result
-        }, function (ldanmu, segIndex) {
-            let res = [];
-            // if (ndanmu * extensionSetting.danmuRate > ldanmu.length) {
-            //     ldanmu = mergeDanmu(ldanmu,
-            //         await danmuFilter(await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
-            //             + cid + '&segment_index=' + segIndex))
-            //     )
-            // }
-            if (segIndex !== null) {
-                for (sdanmu of ldanmu) {
-                    if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
-                        res.push(sdanmu)
+                if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
+                    ldanmu = xml2danmu(sdanmu)
+                    // ldanmu=[]
+                    if (ldanmu.length < ondanmu * 0.1) {
+                        return [ldanmu, ndanmu, ldanmu.length]
                     }
                 }
-            } else res = ldanmu
-            let res_uint8arr = proto_seg.encode(proto_seg.create({elems: res})).finish();
-            if (LOG_PROTO) console.log("verbose proto:", dom, res, res_uint8arr);
-            return [res_uint8arr, res.length, res]
-        }
+                let isStart = true
+                let result = null
+                while (true) {
+                    let sdanmu = null
+                    if (isStart || ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
+                        url = "https://api.bilibili.com/x/v2/dm/web/history/seg.so?type=1&date="
+                            + getdate(date) + "&oid=" + cid.toString();
+                        console.log('ndanmu:', aldanmu.length, '/', lfiltedDanmu.length, getdate(date), url);
+                        sdanmu = loadProtoDanmu(url)
+                    }
+                    let oldanmu = colorFilter(ldanmu)
+                    aldanmu = mergeDanmu(aldanmu, oldanmu)
+                    lfiltedDanmu = mergeDanmu(lfiltedDanmu, await danmuFilter(oldanmu))
+                    if (!isStart && ldanmu.length < Math.min(ondanmu, 5000) * 0.9) {
+                        result = [aldanmu, ondanmu, aldanmu.length]
+                        break
+                    }
+                    if (!isStart && lfiltedDanmu.length > ndanmu * extensionSetting.danmuRate) {
+                        result = [lfiltedDanmu, ondanmu, aldanmu.length]
+                        break
+                    }
+                    ldanmu = await sdanmu
+                    if (ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
+                        let firstdate = getMinDate(ldanmu) * 1000
+                        if (date.getTime() - firstdate < 86400000)
+                            firstdate = date.getTime() - 86400000;
+                        date.setTime(firstdate);
+                    }
+                    if (isStart) {
+                        isStart = false
+                    }
+                }
+                if (expectedDanmuNum === -1 || result[2] === 0 || (result[2] < expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
+                    mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
+                }
+                return result
+            },
+            function (ldanmu, segIndex) {
+                let res = [];
+                // if (ndanmu * extensionSetting.danmuRate > ldanmu.length) {
+                //     ldanmu = mergeDanmu(ldanmu,
+                //         await danmuFilter(await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
+                //             + cid + '&segment_index=' + segIndex))
+                //     )
+                // }
+                if (segIndex !== null) {
+                    for (sdanmu of ldanmu) {
+                        if (sdanmu.progress < segIndex * 360000 && sdanmu.progress >= (segIndex - 1) * 360000) {
+                            res.push(sdanmu)
+                        }
+                    }
+                } else res = ldanmu
+                let res_uint8arr = proto_seg.encode(proto_seg.create({elems: res})).finish();
+                if (LOG_PROTO) console.log("verbose proto:", dom, res, res_uint8arr);
+                return [res_uint8arr, res.length, res]
+            }
         ]
     })();
 
@@ -2739,7 +2741,7 @@ let danmuHookResponse = function () {
                         cid = data.result.main_section.episodes[ipage].cid
                         let aid = data.result.main_section.episodes[ipage].aid
                         if (snDict.hasOwnProperty('offset')) {
-                            res = (await moreFiltedHistory(cid, duration, existDanmuNum + ldanmu.length))[0]
+                            res = (await moreFiltedHistory(cid, duration, existDanmuNum + ldanmu.length,-1))[0]
                             if (snDict.offset === 'default') {
                                 let tDuration = await getBiliVideoDuration(aid, cid)
                                 res = applyOffset(res, [[0, duration - tDuration]])
@@ -2754,7 +2756,7 @@ let danmuHookResponse = function () {
                         } else {
                             let tDuration = await getBiliVideoDuration(aid, cid)
                             if (Math.abs(duration - tDuration) < 3) {
-                                res = (await moreFiltedHistory(cid, duration))[0]
+                                res = (await moreFiltedHistory(cid, duration,0,-1))[0]
                                 if (extensionSetting.reverseStartOffset && extensionSetting.reverseStartOffset !== true) {
                                     res.forEach((danmu) => {
                                         danmu.progress -= extensionSetting.reverseStartOffset.offset * 1000
