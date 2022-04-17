@@ -2741,7 +2741,7 @@ let danmuHookResponse = function () {
                         cid = data.result.main_section.episodes[ipage].cid
                         let aid = data.result.main_section.episodes[ipage].aid
                         if (snDict.hasOwnProperty('offset')) {
-                            res = (await moreFiltedHistory(cid, duration, existDanmuNum + ldanmu.length,-1))[0]
+                            res = (await moreFiltedHistory(cid, duration, existDanmuNum + ldanmu.length, -1))[0]
                             if (snDict.offset === 'default') {
                                 let tDuration = await getBiliVideoDuration(aid, cid)
                                 res = applyOffset(res, [[0, duration - tDuration]])
@@ -2756,7 +2756,7 @@ let danmuHookResponse = function () {
                         } else {
                             let tDuration = await getBiliVideoDuration(aid, cid)
                             if (Math.abs(duration - tDuration) < 3) {
-                                res = (await moreFiltedHistory(cid, duration,0,-1))[0]
+                                res = (await moreFiltedHistory(cid, duration, 0, -1))[0]
                                 if (extensionSetting.reverseStartOffset && extensionSetting.reverseStartOffset !== true) {
                                     res.forEach((danmu) => {
                                         danmu.progress -= extensionSetting.reverseStartOffset.offset * 1000
@@ -2776,7 +2776,7 @@ let danmuHookResponse = function () {
                     if (res) {
                         if (cid === null) cid = snDict.ss
                         ldanmu.push({cid: cid, ldanmu: res})
-                        if (callback) callback(res)
+                        if (callback) callback({cid: cid, ldanmu: res})
                     }
                 } catch (e) {
                     console.log('Error in', snDict, e)
@@ -2968,14 +2968,14 @@ let danmuHookResponse = function () {
                             tldanmu = applyMeanOffset(tldanmu, oDuration, duration)
                         }
                         ldanmu.push({cid: cid, ldanmu: tldanmu})
-                        if (callback) callback(tldanmu)
+                        if (callback) callback({cid: cid, ldanmu: tldanmu})
 
                     }
                 }
                 if (extraInfo.hasOwnProperty('niconico')) {
                     let tldanmu = await nicoDanmu(extraInfo.niconico, 0, ndanmu)
-                    ldanmu.push({cid: cid, ldanmu: tldanmu})
-                    if (callback) callback(tldanmu)
+                    ldanmu.push({cid: extraInfo.niconico, ldanmu: tldanmu})
+                    if (callback) callback({cid: extraInfo.niconico, ldanmu: tldanmu})
                 }
                 return ldanmu
             } catch (e) {
@@ -3003,6 +3003,7 @@ let danmuHookResponse = function () {
         }
 
         function htmlEscape(text) {
+            if (!text) return text
             text = text.replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f]/g, ' ')
             return text.replace(/[<>"&]/g, function (match, pos, originalText) {
                 switch (match) {
@@ -3019,14 +3020,19 @@ let danmuHookResponse = function () {
         }
 
         function downloadFile(fileName, content) {
-            aLink = document.createElement('a');
-
+            let aLink = document.createElement('a');
+            let blob = new Blob([content], {'type': 'text/plain;charset=utf-8'})
             aLink.download = fileName;
-            aLink.href = "data:text/plain," + content;
+            let url = URL.createObjectURL(blob)
+            aLink.href = url
             aLink.click()
+            URL.revokeObjectURL(url)
         }
 
         return async function (cid, ndanmu = 6000) {
+            if (!danmuServerDomain) {
+                await testServer()
+            }
             let ldanmu
             if (cid.startsWith('ss')) {
                 await testServer()
@@ -3071,24 +3077,18 @@ let danmuHookResponse = function () {
         if (loadDanmu) {
             loadDanmakuCallback = function (ldanmu, twitch = false) {
                 console.log('callback', ldanmu, cid)
+                for (let dldanmu of ldldanmu) {
+                    if (dldanmu.cid === cid) {
+                        dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu)
+                    }
+                }
                 if (!twitch) {
-                    for (let dldanmu of ldldanmu) {
-                        if (dldanmu.cid === cid) {
-                            dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu)
-                        }
-                    }
-                    sendResponseAsync({type: 'load_danmaku', ldanmu: ldanmu, cid: cid})
+                    sendResponseAsync({type: 'load_danmaku', ldanmu: ldanmu.ldanmu, cid: cid, source: ldanmu.cid})
                 } else {
-                    for (let dldanmu of ldldanmu) {
-                        if (dldanmu.cid === cid) {
-                            dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu.ldanmu)
-                        }
-                    }
                     ldanmu['type'] = 'load_twitch_chat'
                     ldanmu['cid'] = cid
                     sendResponseAsync(ldanmu)
                 }
-
             }
         }
         if (loadDanmakuCallback && extraInfo.hasOwnProperty('twitch')) {
