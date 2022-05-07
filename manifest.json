@@ -44,10 +44,21 @@
       ],
       "run_at": "document_end",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.gamer.com.tw/*"
+      ],
+      "js": [
+        "bahaPlugin.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": true
     }
   ],
   "options_page": "option.html",
   "web_accessible_resources": [
+    "plugin/jszip.min.js",
     "filterWorker.js",
     "xhr_hook.js"
   ],

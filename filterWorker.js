@@ -58,5 +58,7 @@ self.addEventListener('message', function (e) {
             console.log(e, danmu)
         }
     }
-    self.postMessage({ldanmu: nldanmu})
+    self.postMessage(
+        {ldanmu: nldanmu, time: e.data.time}
+    )
 }, false)

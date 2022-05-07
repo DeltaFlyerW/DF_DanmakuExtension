@@ -117,6 +117,7 @@ function editConfig(key, value) {
             crcFilter = res
         })
     }
+    window.ldldanmu = []
     return '修改成功'
 }
 
@@ -153,10 +154,12 @@ let [str, len, searchContent, searchPeriod] = (function util() {
         },
         function searchContent(keyword) {
             let res = []
-            for (let danmu of ldldanmu[ldldanmu.length - 1].ldanmu) {
-                if (danmu.content.indexOf(keyword) !== -1) {
-                    console.log(danmu)
-                    res.push(danmu)
+            for (let ldanmu of ldldanmu[ldldanmu.length - 1].ldanmu) {
+                for (let danmu of ldanmu.ldanmu) {
+                    if (danmu.content.indexOf(keyword) !== -1) {
+                        console.log(danmu)
+                        res.push(danmu)
+                    }
                 }
             }
             return res
@@ -169,6 +172,14 @@ let [str, len, searchContent, searchPeriod] = (function util() {
             }
             if (end === 0) {
                 end = start + 1
+            }
+            for (let ldanmu of ldldanmu[ldldanmu.length - 1].ldanmu) {
+                for (let danmu of ldanmu.ldanmu) {
+                    if (danmu.progress / 1000 >= start && danmu.progress / 1000 < end) {
+                        console.log(danmu)
+                        res.push(danmu)
+                    }
+                }
             }
             for (let danmu of ldldanmu[ldldanmu.length - 1].ldanmu) {
                 if (danmu.progress / 1000 >= start && danmu.progress / 1000 < end) {
@@ -618,7 +629,8 @@ let parseNicoServerResponse = function () {
                     "color": '0x' + danmu.color.toString(16),
                     "zIndex": i,
                     'bold': 0,
-                };
+                }
+
                 let fontSize = danmu.fontsize, danmuType = danmu.mode, color = danmu.color
                 if ((Number(argv['color'].slice(2, 4)) + Number(argv['color'].slice(4, 6))
                     + Number(argv['color'].slice(6, 8))) < 40) {
@@ -650,6 +662,9 @@ let parseNicoServerResponse = function () {
                     }
                 }
                 let content = danmu.content.replace(/\t/g, '    ')
+                if (content.indexOf('█') !== -1) {
+                    argv.zIndex = 0
+                }
                 let rows = content.split('\n')
                 argv['fontSize'] = (100 / (dFontRatio[fontSize] * 2)).toFixed(5) + '%'
                 if (rows.length > 45) {
@@ -833,7 +848,7 @@ let parseNicoServerResponse = function () {
             }
         } else {
             ldanmu = sdanmu.split('\n')
-            ldanmu = ldanmu.reverse()
+            // ldanmu = ldanmu.reverse()
             let lNicoCommendObject = []
             for (let i = 0; i < ldanmu.length; i++) {
                 let [argv, command, content] = ldanmu[i].split('""')
@@ -2401,7 +2416,7 @@ let danmuHookResponse = function () {
                 .replace(/&quot;/g, '&')
         }
 
-        function xml2danmu(sdanmu, user = null) {
+        window.xml2danmu = (sdanmu, user = null) => {
             let ldanmu = sdanmu.split('</d><d p=');
 
             if (ldanmu.length === 1) {
@@ -2544,7 +2559,7 @@ let danmuHookResponse = function () {
                     ndanmu = parseInt((duration / 24 / 60) * 3000)
                 }
                 if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
-                    ldanmu = xml2danmu(sdanmu)
+                    ldanmu = window.xml2danmu(sdanmu)
                     // ldanmu=[]
                     if (ldanmu.length < ondanmu * 0.1) {
                         return [ldanmu, ndanmu, ldanmu.length]
@@ -2630,6 +2645,26 @@ let danmuHookResponse = function () {
             return [tDuration, ipage]
         }
     }
+
+    function duration2poolSize(duration) {
+        let lPoolSize = [
+            [0, 100],
+            [30, 300],
+            [60, 500],
+            [180, 1000],
+            [600, 1500],
+            [900, 3000],
+            [1500, 4000],
+            [2400, 6000],
+            [3600, 8000],
+        ]
+        for (let i = 0; i < lPoolSize.length; i += 1) {
+            if (duration > lPoolSize[lPoolSize.length - i - 1][0]) {
+                return lPoolSize[lPoolSize.length - i - 1][1]
+            }
+        }
+    }
+
 
     let mergeServerDanmaku = function () {
         'use strict'
@@ -3019,9 +3054,12 @@ let danmuHookResponse = function () {
             });
         }
 
-        function downloadFile(fileName, content) {
+        function downloadFile(fileName, content, type = 'text/plain;charset=utf-8') {
             let aLink = document.createElement('a');
-            let blob = new Blob([content], {'type': 'text/plain;charset=utf-8'})
+            let blob
+            if (typeof (content) == 'string')
+                blob = new Blob([content], {'type': type})
+            else blob = content
             aLink.download = fileName;
             let url = URL.createObjectURL(blob)
             aLink.href = url
@@ -3029,36 +3067,68 @@ let danmuHookResponse = function () {
             URL.revokeObjectURL(url)
         }
 
-        return async function (cid, ndanmu = 6000) {
+        return async function (cid, ndanmu = 6000, ret = false) {
             if (!danmuServerDomain) {
                 await testServer()
             }
             let ldanmu
-            if (cid.startsWith('ss')) {
+            if (cid.name) {
+                let zip = new JSZip();
+                let folder=zip.folder(cid.name)
+
+
+                for (let sn of cid.lsn) {
+                    let sdanmu = await window.downloadDanmaku(sn.sn, ndanmu, true)
+                    folder.file(sn.name + ' ' + sdanmu.name, sdanmu.sdanmu)
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                }
+                zip.generateAsync({
+                    type: "blob", compression: "DEFLATE",
+                    compressionOptions: {
+                        level: 9
+                    }
+                })
+                    .then(function (content) {
+                        downloadFile(cid.name + ".zip", content);
+                    });
+                return
+            } else if (cid.startsWith('ss')) {
+                let zip = new JSZip();
+
                 await testServer()
-                let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + cid.slice(2)))
+                let data = JSON.parse(await xhrGet('https://bangumi.bilibili.com/view/web_api/season?season_id=' + cid.slice(2)))
                 let i = 0
                 extensionSetting.translateNicoComment = true
                 extensionSetting.translateThreshold = 1
                 extensionSetting.nicoDanmuRate = 100
                 extensionSetting.reverseStartOffset = true
                 extensionSetting.notReturnProtobuf = true
-                for (let episode of data.result.main_section.episodes) {
+                for (let episode of data.result.episodes) {
                     ldanmu = await danmuHookResponse(episode.cid, episode.aid, i, cid.slice(2))
-                    let fileName = episode.title + ' ' + episode.long_title + ' '
+                    let fileName = episode.index + ' ' + episode.index_title + ' '
                     console.log(fileName)
                     for (let tldanmu of ldanmu) {
                         tldanmu.cid = tldanmu.cid.toString()
                         if (tldanmu.cid.startsWith('so')) {
                             extensionSetting.translateNicoComment = false
                             let rawDanmu = await nicoDanmu(tldanmu.cid, 0, 1000000)
-                            downloadFile(fileName + ' ' + tldanmu.cid + '.raw.xml', genxml(danmuObject2XML(rawDanmu), 0, 0))
+
+                            zip.file(fileName + ' ' + tldanmu.cid + '.raw.xml', genxml(danmuObject2XML(rawDanmu), 0, 0))
                             extensionSetting.translateNicoComment = true
                         }
-                        downloadFile(fileName + ' ' + tldanmu.cid + '.xml', genxml(danmuObject2XML(tldanmu.ldanmu), 0, 0))
+                        zip.file(fileName + ' ' + tldanmu.cid + '.xml', genxml(danmuObject2XML(tldanmu.ldanmu), 0, 0))
                     }
                     i += 1
                 }
+                zip.generateAsync({
+                    type: "blob", compression: "DEFLATE",
+                    compressionOptions: {
+                        level: 9
+                    }
+                })
+                    .then(function (content) {
+                        downloadFile(data.result.title + ".zip", content);
+                    });
                 await loadConfig()
                 return
             } else if (cid.startsWith('sn')) {
@@ -3069,7 +3139,12 @@ let danmuHookResponse = function () {
                 ldanmu = (await moreFiltedHistory(cid))[0]
                 cid = 'cid' + cid
             }
-            return downloadFile(cid + '.xml', genxml(danmuObject2XML(ldanmu), 0, 0))
+            if (!ret) {
+                return downloadFile(cid + '.xml', genxml(danmuObject2XML(ldanmu), 0, 0))
+            } else {
+                return {name: cid + '.xml', sdanmu: genxml(danmuObject2XML(ldanmu), 0, 0)}
+            }
+
         }
     }();
     return async function (cid, aid, ipage, ssid, extraInfo, loadDanmu, sendResponseAsync) {
@@ -3100,8 +3175,12 @@ let danmuHookResponse = function () {
         let ldanmu = null, ndanmu = null
         for (let dldanmu of ldldanmu) {
             if (dldanmu['cid'] === cid) {
-                ldanmu = dldanmu['ldanmu']
-                ndanmu = dldanmu['ndnamu']
+                if (new Date().getTime() - dldanmu.timestamp < 300000) {
+                    ldanmu = dldanmu['ldanmu']
+                    ndanmu = dldanmu['ndnamu']
+                } else {
+                    ldldanmu.pop(dldanmu)
+                }
                 break
             }
         }
@@ -3111,6 +3190,7 @@ let danmuHookResponse = function () {
                 ldldanmu.shift()
             }
             ldldanmu.push({
+                timestamp: new Date().getTime(),
                 "aid": aid,
                 'cid': cid,
                 'ldanmu': null,
@@ -3120,10 +3200,17 @@ let danmuHookResponse = function () {
             if (aid) {
                 [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
             }
-            let ret = await moreFiltedHistory(cid, duration, 0)
-            ldanmu = [{'cid': cid, 'ldanmu': ret[0], 'ndanmu': ret[1]}]
-            ndanmu = ret[1]
-            console.log('ndanmu:' + ret[0].length + ' from history')
+            if (!(ssid && extensionSetting.ignoreBili)) {
+                let ret = await moreFiltedHistory(cid, duration, 0)
+                ldanmu = [{'cid': cid, 'ldanmu': ret[0], 'ndanmu': ret[1]}]
+                console.log('ndanmu:' + ret[0].length + ' from history')
+
+                ndanmu = ret[1]
+            } else {
+                ndanmu = duration2poolSize(duration)
+                ldanmu = []
+            }
+
             let serverError = false, outsideDanmaku
             try {
                 if (ssid) {
@@ -3164,7 +3251,7 @@ let danmuHookResponse = function () {
         if (!extensionSetting.notReturnProtobuf) {
             let aldanmu = []
             for (let tldanmu of ldanmu) {
-                if (extensionSetting.ignoreBili && len(tldanmu) > 1 && /^\d+$/.exec(tldanmu['cid'])) continue
+                if (extensionSetting.ignoreBili && len(ldanmu) > 1 && /^\d+$/.exec(tldanmu['cid'])) continue
                 aldanmu = aldanmu.concat(tldanmu['ldanmu'])
             }
             ldanmu = aldanmu
@@ -3236,7 +3323,12 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
             console.log(request)
             window.downloadDanmaku(request.cid)
             return sendResponseAsync()
+        } else if (request.type === "bahamuteDownloadDanmaku") {
+            console.log(request)
+            window.downloadDanmaku(request)
+            return sendResponseAsync()
         }
+
         return sendResponseAsync()
     }
 );
@@ -3277,7 +3369,8 @@ async function buildCrcFilter() {
             1088359270, 936918000, 2847714899, 3736837829, 1202900863, 817233897, 3183342108, 3401237130, 1404277552,
             615818150, 3134207493, 3453421203, 1423857449, 601450431, 3009837614, 3294710456, 1567103746, 711928724,
             3020668471, 3272380065, 1510334235, 755167117],
-        crc32 = function ( /* String */ str,) {
+        crc32 = function (
+            /* String */ str,) {
             let crc = -1
             for (let i = 0, iTop = str.length; i < iTop; i++) {
                 crc = (crc >>> 8) ^ table[(crc ^ str.charCodeAt(i)) & 0xFF];
