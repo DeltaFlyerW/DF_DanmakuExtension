@@ -27,6 +27,7 @@ if (document.head) {
     let lastHref = null
     let lastDesc = null
     let currentCid = null
+    let cacheUrls = []
 
     async function getDescInfo(cid) {
         if (window.location.href === lastHref) {
@@ -49,19 +50,22 @@ if (document.head) {
                     console.log('Found YoutubeUrl:' + youtubeUrl)
                     extraInfo['youtube'] = youtubeUrl
                 }
-                let nico = info.querySelector('a[target=_blank][href^="//acg.tv/sm"]');
+                let lnico = info.querySelectorAll('a[target=_blank][href^="//acg.tv/sm"]');
+                let nico = lnico[0]
                 let nicoinfo = null
-                if (nico !== null) {
+                if (nico) {
                     nicoinfo = nico.getAttribute('href')
-
                     nicoinfo = /([sS][mM]\d+)/.exec(nicoinfo)
-                    nico.setAttribute('href', 'https://www.nicovideo.jp/watch/' + nicoinfo[1])
-
                     if (nicoinfo !== null) {
                         nicoinfo = nicoinfo[1]
                     }
-
+                    for (let nico of lnico) {
+                        let nicoinfo = nico.getAttribute('href')
+                        nicoinfo = /([sS][mM]\d+)/.exec(nicoinfo)
+                        nico.setAttribute('href', 'https://www.nicovideo.jp/watch/' + nicoinfo[1])
+                    }
                 }
+
                 if (nicoinfo === null) {
                     nicoinfo = /([sS][mM]\d+)/.exec(info.innerText)
                     if (nicoinfo !== null) {
@@ -90,11 +94,15 @@ if (document.head) {
         let ssid, aid
         let ipage = null
         if (/play\/ss(\d+)/.exec(document.querySelector('script[type="application/ld+json"]').textContent)) {
-            if (window.seasonInfo) {
-                ssid = window.seasonInfo['result']['season_id']
-                for (let i = 0; i < window.seasonInfo['result']['episodes'].length; i++) {
-                    if (window.seasonInfo['result']['episodes'][i]['cid'] === parseInt(cid)) {
-                        aid = window.seasonInfo['result']['episodes'][i]['aid']
+            let seasonInfo
+            if (cacheUrls['season']) {
+                seasonInfo = JSON.parse(cacheUrls['season']['data'])
+            }
+            if (seasonInfo) {
+                ssid = seasonInfo['result']['season_id']
+                for (let i = 0; i < seasonInfo['result']['episodes'].length; i++) {
+                    if (seasonInfo['result']['episodes'][i]['cid'] === parseInt(cid)) {
+                        aid = seasonInfo['result']['episodes'][i]['aid']
                         ipage = i
                         break
                     }
@@ -107,6 +115,7 @@ if (document.head) {
                 if (ssid) {
                     ssid = ssid[1]
                     let data = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid))
+                    extraInfo['firstAid'] = data['result']['main_section']['episodes'][0]['aid']
                     for (let i = 0; i < data.result.main_section.episodes.length; i++) {
                         if (data.result.main_section.episodes[i].cid === parseInt(cid)) {
                             aid = data.result.main_section.episodes[i].aid
@@ -121,9 +130,14 @@ if (document.head) {
                     let data = await parse('https://bangumi.bilibili.com/view/web_api/season?ep_id=' + epid[1])
                     data = JSON.parse(data)
                     ssid = data['result']['season_id']
-                    for (let i = 0; i < data['result']['episodes'].length; i++) {
-                        if (data['result']['episodes'][i]['cid'] === parseInt(cid)) {
-                            aid = data['result']['episodes'][i]['aid']
+                    let episodes = data['result']['episodes']
+                    if (episodes.length === 0) {
+                        episodes = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid)).result.main_section.episodes
+                    }
+                    extraInfo['firstAid'] = episodes[0]['aid']
+                    for (let i = 0; i < episodes.length; i++) {
+                        if (episodes[i]['cid'] === parseInt(cid)) {
+                            aid = episodes[i]['aid']
                             ipage = i
                             break
                         }
@@ -137,7 +151,23 @@ if (document.head) {
             aid = document.querySelector('meta[itemprop="url"]')
             aid = /(BV.*?)[\/?]/.exec(aid.getAttribute('content'))[1]
             aid = bv2av(aid)
+            let videoInfo
+            if (cacheUrls['view']) {
+                videoInfo = JSON.parse(cacheUrls['view'].data).data
+            } else {
+                videoInfo = JSON.parse(await parse('https://api.bilibili.com/x/web-interface/view?aid=' + aid)).data
+            }
+            extraInfo.pubdate = videoInfo.pubdate
         }
+        let mid = document.querySelector('*[id="v_upinfo"]')
+
+        if (mid) {
+            mid = mid.querySelector('a[href^="//space.bilibili.com"]').href
+            mid = /com\/(\d+)/.exec(mid)[1]
+            extraInfo.mid = mid
+        }
+
+
         lastHref = window.location.href
         lastDesc = [aid, ssid, ipage, extraInfo]
         window.postMessage({type: 'descLoad', 'desc': lastDesc}, '*')
@@ -251,8 +281,8 @@ if (document.head) {
                     }
 
 
-                } else if (event.data.type === 'seasonInfo') {
-                    window.seasonInfo = JSON.parse(event.data.arg)
+                } else if (event.data.type === 'cacheUrl') {
+                    cacheUrls[event.data.urlType] = event.data
                 } else if (event.data.type === 'queryDesc') {
 
                 } else if (event.data.type === 'replaceEpisodeUrl') {
@@ -267,6 +297,9 @@ if (document.head) {
                     }
                 }
                 if (event.data.source === 'DFex') {
+                    if (event.data.type === 'previewDanmaku') {
+                        event.data.cid = lastDesc.cid
+                    }
                     chrome.runtime.sendMessage(event.data);
                     let timeStamp = event.data.timeStamp
                     await new Promise(resolve => {
@@ -287,7 +320,6 @@ if (document.head) {
         ,
         false
     );
-
     if (window.location.href.indexOf('https://www.bilibili.com/bangumi') ||
         window.location.href.indexOf('https://www.bilibili.com/video')) {
     }

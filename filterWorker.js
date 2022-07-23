@@ -59,6 +59,6 @@ self.addEventListener('message', function (e) {
         }
     }
     self.postMessage(
-        {ldanmu: nldanmu, time: e.data.time}
+        {ldanmu: nldanmu, time: e.data.time, cid: e.data.cid,index:e.data.index}
     )
 }, false)

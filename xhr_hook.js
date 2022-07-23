@@ -8,6 +8,9 @@
             if (event.source !== window || !event.data || !event.data.type) return;
             // console.log(event.data)
             if (event.data.type === 'replaceLoadPage') {
+                if (window.bbComment.prototype.originLoadPage) {
+                    return;
+                }
                 eval('window.bbComment.prototype.originLoadPage=' + window.bbComment.prototype.loadPage.toString())
                 if (!window.loadPage) {
                     window.loadPage = buildLoadPage(event.data.lastDesc)
@@ -188,7 +191,6 @@
                     link.href = this.pakku_url;
                     this.pakku_url = link.href;
                     let that = this;
-                    console.log(this.pakku_url)
                     if (this.pakku_load_callback || this.onreadystatechange !== null) {
                         send_msg_proxy(that.pakku_url, function (resp) {
 
@@ -240,19 +242,30 @@
                         console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
                         return that.pakku_send(arg);
                     }
-                } else if (this.pakku_url.indexOf('season?ep_id') !== -1) {
-                    console.log('hook seasonInfo')
-                    this.pakku_addEventListener('readystatechange', function (s) {
-                        if (4 === s.target.readyState) {
-                            console.log('post seasonInfo')
-                            window.postMessage({
-                                type: 'seasonInfo',
-                                arg: s.target.responseText
-                            }, "*");
-                        }
-                    })
-                    return this.pakku_send(arg)
                 } else {
+                    let cacheUrlList = [{
+                        type: 'season',
+                        pattern: 'season?ep_id'
+                    }, {
+                        type: 'view',
+                        pattern: 'view?aid='
+                    }]
+                    let url=this.pakku_url
+                    for (let cache of cacheUrlList) {
+                        if (this.pakku_url.indexOf(cache.pattern) !== -1) {
+                            this.pakku_addEventListener('readystatechange', function (s) {
+                                if (4 === s.target.readyState) {
+                                    window.postMessage({
+                                        type: 'cacheUrl',
+                                        url: url,
+                                        urlType: cache.type,
+                                        data: s.target.responseText,
+                                    }, "*");
+                                }
+                            })
+                        }
+                    }
+
                     return this.pakku_send(arg)
                 }
             };
@@ -622,6 +635,13 @@
         if (loadDanmu) {
             return true
         }
+    }
+
+    window.previewDanmaku = function (xml) {
+        postExtension('previewDanmaku', {
+            'content': xml,
+        })
+        console.log('添加成功,请刷新视频')
     }
 
     console.log("pakku ajax: hook set");

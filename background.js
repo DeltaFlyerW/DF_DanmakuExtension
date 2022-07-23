@@ -14,7 +14,7 @@ let defaultConfig = {
     uidFilter: -1,
     filterRule: [
         {
-            string: ['⎛', '[oh', '[前方'],
+            string: ['⎛', '[oh', '[前方', '走好'],
         }
     ],
     version: '2.0'
@@ -122,7 +122,7 @@ function editConfig(key, value) {
 }
 
 
-let [str, len, searchContent, searchPeriod] = (function util() {
+let [str, len, searchContent, searchPeriod, ignoreBili] = (function util() {
     Array.prototype.sortMultiParameter = function (parameters) {
         this.sort(function (a, b) {
             for (let p of parameters) {
@@ -189,6 +189,9 @@ let [str, len, searchContent, searchPeriod] = (function util() {
             }
             return res
         },
+        function ignoreBili() {
+            console.log(editConfig('ignoreBili', !extensionSetting.ignoreBili))
+        }
     ]
 })();
 (function corsManipulate() {
@@ -196,7 +199,7 @@ let [str, len, searchContent, searchPeriod] = (function util() {
 
         for (let i = 0, len = headerArray.length; i < len; i++) {
             let currentHeader = headerArray[i];
-            if (currentHeader.hasOwnProperty('name') && currentHeader.name == newHeader.name) {
+            if (currentHeader.hasOwnProperty('name') && currentHeader.name === newHeader.name) {
                 return i;
             }
         }
@@ -250,9 +253,10 @@ let [str, len, searchContent, searchPeriod] = (function util() {
     }
 
     let settings = [
+        {URL: 'https://www.biliplus.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
         {URL: 'http://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
         {URL: 'https://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://textuploader.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]}
+        {URL: 'https://textuploader.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
     ]
     let headersPerUrl = {};
     let urlsToAlter = [];
@@ -336,7 +340,6 @@ async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr =
         }
         return null
     }
-
 }
 
 async function xhrPost(option) {
@@ -463,14 +466,17 @@ let parseNicoServerResponse = function () {
     function resolveNicoDanmu(lNicoCommendObject, startIndex = 0, name = 'niconico') {
         let lNicoScript = []
         let lres = []
-        for (let i = 0; i < lNicoCommendObject.length; i++) {
-            let content = lNicoCommendObject[i]['content']
+        for (let comment of lNicoCommendObject) {
+            let content = comment['content']
             if (content.indexOf('@置換') !== -1) {
                 let script = {
-                    'nico': lNicoCommendObject[i],
+                    'nico': comment,
                     'type': 'replace',
                 }
                 let argv = content.split(' ')
+                if (len(argv) < 3) {
+                    continue
+                }
                 if (argv[1][0] === '"') {
                     argv[1] = argv[1].slice(1, argv[1].length - 1)
                     argv[2] = argv[2].slice(1, argv[2].length - 1)
@@ -488,7 +494,7 @@ let parseNicoServerResponse = function () {
                 }
                 lNicoScript.push(script)
             } else {
-                lres.push(lNicoCommendObject[i])
+                lres.push(comment)
             }
         }
         let ldanmu = []
@@ -851,19 +857,36 @@ let parseNicoServerResponse = function () {
             // ldanmu = ldanmu.reverse()
             let lNicoCommendObject = []
             for (let i = 0; i < ldanmu.length; i++) {
-                let [argv, command, content] = ldanmu[i].split('""')
+                let args = ldanmu[i].split('""')
+                let argv, command, content, fileArg
+
+                if (args.length === 3) [argv, command, content] = args
+                else [fileArg, argv, command, content] = args
+
                 if (encrypt) {
                     content = content.replace(/([^\\]|^)((\\\\)*)\\x/g, '$1$2\\u')
                 }
 
                 let [vpos, date] = argv.split(',')
+
+                let comment = {
+                    date: date,
+                    vpos: vpos,
+                    mail: JSON.parse('"' + command + '"'),
+                }
                 try {
-                    lNicoCommendObject.push({
-                        date: date,
-                        vpos: vpos,
-                        mail: JSON.parse('"' + command + '"'),
-                        content: JSON.parse('"' + content + '"')
-                    })
+                    comment.content = JSON.parse('"' + content + '"')
+                } catch (e) {
+                    console.log(e, args)
+                    comment.content = JSON.parse('"' + content.replace(/"/g, '\\"') + '"')
+                }
+                if (fileArg) {
+                    let [no, user] = fileArg.split(',')
+                    comment['no'] = no
+                    comment['user'] = user
+                }
+                try {
+                    lNicoCommendObject.push(comment)
                 } catch (e) {
                     console.log(ldanmu[i], e)
                 }
@@ -893,10 +916,12 @@ let danmuHookResponse = function () {
     let danmuFilter = function () {
         let lfilterWorker = []
         for (let i = 0; i < 8; i += 1) {
-            lfilterWorker.push(new Worker(chrome.runtime.getURL("filterWorker.js")))
+            let worker = new Worker(chrome.runtime.getURL("filterWorker.js"))
+            lfilterWorker.push(worker)
         }
 
-        return async function (ldanmu, filterRule = null) {
+        return async function (ldanmu, filterRule = null, cid) {
+            console.assert(cid !== undefined)
             if (filterRule === null) {
                 filterRule = extensionSetting.filterRule
             }
@@ -929,15 +954,34 @@ let danmuHookResponse = function () {
                             } else {
                                 end = ldanmu.length
                             }
-                            worker.postMessage({rule: ruleGroup, ldanmu: ldanmu.slice(i * ndanmu, end),})
-                            worker.onmessage = (event) => {
+                            // worker.postMessage({rule: ruleGroup, ldanmu: ldanmu.slice(i * ndanmu, end),})
+                            // worker.onmessage = (event) => {
+                            //     // console.log(event.data.ldanmu.length,nldanmu.length)
+                            //     nldanmu = nldanmu.concat(event.data.ldanmu)
+                            //     iprogress += 1
+                            //     if (iprogress === 8) {
+                            //         resolve()
+                            //     }
+                            // }
+
+                            worker.postMessage({
+                                rule: ruleGroup,
+                                ldanmu: ldanmu.slice(i * ndanmu, end),
+                                cid: cid,
+                                index: i
+                            })
+                            let callback = (event) => {
                                 // console.log(event.data.ldanmu.length,nldanmu.length)
-                                nldanmu = nldanmu.concat(event.data.ldanmu)
-                                iprogress += 1
-                                if (iprogress === 8) {
-                                    resolve()
+                                if (event.data.cid === cid && event.data.index === i) {
+                                    nldanmu = nldanmu.concat(event.data.ldanmu)
+                                    iprogress += 1
+                                    worker.removeEventListener('message', callback)
+                                    if (iprogress === 8) {
+                                        resolve()
+                                    }
                                 }
                             }
+                            worker.addEventListener('message', callback)
                         }
                     })
                     ldanmu = nldanmu;
@@ -1111,7 +1155,7 @@ let danmuHookResponse = function () {
         }
         try {
             for (let danmu of nldanmu) {
-                let ida = danmu.progress * danmu.content.length * parseInt(danmu.midHash, 16)
+                let ida = (danmu.progress ? danmu.progress : 1) * danmu.content.length * parseInt(danmu.midHash, 16)
                 if (!oldanmu.idPool.has(ida)) {
                     if (!crcFilter || crcFilter(danmu.midHash)) {
                         oldanmu.push(danmu)
@@ -1816,391 +1860,199 @@ let danmuHookResponse = function () {
         (function ($protobuf) {
             "use strict";
             var $Reader = $protobuf.Reader, $Writer = $protobuf.Writer, $util = $protobuf.util;
+
             var $root = $protobuf.roots["default"] || ($protobuf.roots["default"] = {});
-            $root.bilibili = function () {
+
+            $root.bilibili = (function () {
+
                 var bilibili = {};
-                bilibili.community = function () {
+
+                bilibili.community = (function () {
+
                     var community = {};
-                    community.service = function () {
+
+                    community.service = (function () {
+
                         var service = {};
-                        service.dm = function () {
+
+                        service.dm = (function () {
+
                             var dm = {};
-                            dm.v1 = function () {
+
+                            dm.v1 = (function () {
+
                                 var v1 = {};
-                                v1.DmWebViewReply = function () {
-                                    function DmWebViewReply(properties) {
-                                        this.specialDms = [];
-                                        if (properties) for (var keys = Object.keys(properties), i = 0; i < keys.length; ++i) if (properties[keys[i]] != null) this[keys[i]] = properties[keys[i]]
-                                    }
 
-                                    DmWebViewReply.prototype.state = 0;
-                                    DmWebViewReply.prototype.text = "";
-                                    DmWebViewReply.prototype.textSide = "";
-                                    DmWebViewReply.prototype.dmSge = null;
-                                    DmWebViewReply.prototype.flag = null;
-                                    DmWebViewReply.prototype.specialDms = $util.emptyArray;
-                                    DmWebViewReply.create = function create(properties) {
-                                        return new DmWebViewReply(properties)
-                                    };
-                                    DmWebViewReply.encode = function encode(message, writer) {
-                                        if (!writer) writer = $Writer.create();
-                                        if (message.state != null && Object.hasOwnProperty.call(message, "state")) writer.uint32(8).int32(message.state);
-                                        if (message.text != null && Object.hasOwnProperty.call(message, "text")) writer.uint32(18).string(message.text);
-                                        if (message.textSide != null && Object.hasOwnProperty.call(message, "textSide")) writer.uint32(26).string(message.textSide);
-                                        if (message.dmSge != null && Object.hasOwnProperty.call(message, "dmSge")) $root.bilibili.community.service.dm.v1.DmSegConfig.encode(message.dmSge, writer.uint32(34).fork()).ldelim();
-                                        if (message.flag != null && Object.hasOwnProperty.call(message, "flag")) $root.bilibili.community.service.dm.v1.DanmakuFlagConfig.encode(message.flag, writer.uint32(42).fork()).ldelim();
-                                        if (message.specialDms != null && message.specialDms.length) for (var i = 0; i < message.specialDms.length; ++i) writer.uint32(50).string(message.specialDms[i]);
-                                        return writer
-                                    };
-                                    DmWebViewReply.encodeDelimited = function encodeDelimited(message, writer) {
-                                        return this.encode(message, writer).ldelim()
-                                    };
-                                    DmWebViewReply.decode = function decode(reader, length) {
-                                        if (!(reader instanceof $Reader)) reader = $Reader.create(reader);
-                                        var end = length === undefined ? reader.len : reader.pos + length,
-                                            message = new $root.bilibili.community.service.dm.v1.DmWebViewReply;
-                                        while (reader.pos < end) {
-                                            var tag = reader.uint32();
-                                            switch (tag >>> 3) {
-                                                case 1:
-                                                    message.state = reader.int32();
-                                                    break;
-                                                case 2:
-                                                    message.text = reader.string();
-                                                    break;
-                                                case 3:
-                                                    message.textSide = reader.string();
-                                                    break;
-                                                case 4:
-                                                    message.dmSge = $root.bilibili.community.service.dm.v1.DmSegConfig.decode(reader, reader.uint32());
-                                                    break;
-                                                case 5:
-                                                    message.flag = $root.bilibili.community.service.dm.v1.DanmakuFlagConfig.decode(reader, reader.uint32());
-                                                    break;
-                                                case 6:
-                                                    if (!(message.specialDms && message.specialDms.length)) message.specialDms = [];
-                                                    message.specialDms.push(reader.string());
-                                                    break;
-                                                default:
-                                                    reader.skipType(tag & 7);
-                                                    break
-                                            }
-                                        }
-                                        return message
-                                    };
-                                    DmWebViewReply.decodeDelimited = function decodeDelimited(reader) {
-                                        if (!(reader instanceof $Reader)) reader = new $Reader(reader);
-                                        return this.decode(reader, reader.uint32())
-                                    };
-                                    DmWebViewReply.verify = function verify(message) {
-                                        if (typeof message !== "object" || message === null) return "object expected";
-                                        if (message.state != null && message.hasOwnProperty("state")) if (!$util.isInteger(message.state)) return "state: integer expected";
-                                        if (message.text != null && message.hasOwnProperty("text")) if (!$util.isString(message.text)) return "text: string expected";
-                                        if (message.textSide != null && message.hasOwnProperty("textSide")) if (!$util.isString(message.textSide)) return "textSide: string expected";
-                                        if (message.dmSge != null && message.hasOwnProperty("dmSge")) {
-                                            var error = $root.bilibili.community.service.dm.v1.DmSegConfig.verify(message.dmSge);
-                                            if (error) return "dmSge." + error
-                                        }
-                                        if (message.flag != null && message.hasOwnProperty("flag")) {
-                                            var error = $root.bilibili.community.service.dm.v1.DanmakuFlagConfig.verify(message.flag);
-                                            if (error) return "flag." + error
-                                        }
-                                        if (message.specialDms != null && message.hasOwnProperty("specialDms")) {
-                                            if (!Array.isArray(message.specialDms)) return "specialDms: array expected";
-                                            for (var i = 0; i < message.specialDms.length; ++i) if (!$util.isString(message.specialDms[i])) return "specialDms: string[] expected"
-                                        }
-                                        return null
-                                    };
-                                    DmWebViewReply.fromObject = function fromObject(object) {
-                                        if (object instanceof $root.bilibili.community.service.dm.v1.DmWebViewReply) return object;
-                                        var message = new $root.bilibili.community.service.dm.v1.DmWebViewReply;
-                                        if (object.state != null) message.state = object.state | 0;
-                                        if (object.text != null) message.text = String(object.text);
-                                        if (object.textSide != null) message.textSide = String(object.textSide);
-                                        if (object.dmSge != null) {
-                                            if (typeof object.dmSge !== "object") throw TypeError(".bilibili.community.service.dm.v1.DmWebViewReply.dmSge: object expected");
-                                            message.dmSge = $root.bilibili.community.service.dm.v1.DmSegConfig.fromObject(object.dmSge)
-                                        }
-                                        if (object.flag != null) {
-                                            if (typeof object.flag !== "object") throw TypeError(".bilibili.community.service.dm.v1.DmWebViewReply.flag: object expected");
-                                            message.flag = $root.bilibili.community.service.dm.v1.DanmakuFlagConfig.fromObject(object.flag)
-                                        }
-                                        if (object.specialDms) {
-                                            if (!Array.isArray(object.specialDms)) throw TypeError(".bilibili.community.service.dm.v1.DmWebViewReply.specialDms: array expected");
-                                            message.specialDms = [];
-                                            for (var i = 0; i < object.specialDms.length; ++i) message.specialDms[i] = String(object.specialDms[i])
-                                        }
-                                        return message
-                                    };
-                                    DmWebViewReply.toObject = function toObject(message, options) {
-                                        if (!options) options = {};
-                                        var object = {};
-                                        if (options.arrays || options.defaults) object.specialDms = [];
-                                        if (options.defaults) {
-                                            object.state = 0;
-                                            object.text = "";
-                                            object.textSide = "";
-                                            object.dmSge = null;
-                                            object.flag = null
-                                        }
-                                        if (message.state != null && message.hasOwnProperty("state")) object.state = message.state;
-                                        if (message.text != null && message.hasOwnProperty("text")) object.text = message.text;
-                                        if (message.textSide != null && message.hasOwnProperty("textSide")) object.textSide = message.textSide;
-                                        if (message.dmSge != null && message.hasOwnProperty("dmSge")) object.dmSge = $root.bilibili.community.service.dm.v1.DmSegConfig.toObject(message.dmSge, options);
-                                        if (message.flag != null && message.hasOwnProperty("flag")) object.flag = $root.bilibili.community.service.dm.v1.DanmakuFlagConfig.toObject(message.flag, options);
-                                        if (message.specialDms && message.specialDms.length) {
-                                            object.specialDms = [];
-                                            for (var j = 0; j < message.specialDms.length; ++j) object.specialDms[j] = message.specialDms[j]
-                                        }
-                                        return object
-                                    };
-                                    DmWebViewReply.prototype.toJSON = function toJSON() {
-                                        return this.constructor.toObject(this, $protobuf.util.toJSONOptions)
-                                    };
-                                    return DmWebViewReply
-                                }();
-                                v1.DmSegConfig = function () {
-                                    function DmSegConfig(properties) {
-                                        if (properties) for (var keys = Object.keys(properties), i = 0; i < keys.length; ++i) if (properties[keys[i]] != null) this[keys[i]] = properties[keys[i]]
-                                    }
+                                v1.DmSegMobileReply = (function () {
 
-                                    DmSegConfig.prototype.pageSize = $util.Long ? $util.Long.fromBits(0, 0, false) : 0;
-                                    DmSegConfig.prototype.total = $util.Long ? $util.Long.fromBits(0, 0, false) : 0;
-                                    DmSegConfig.create = function create(properties) {
-                                        return new DmSegConfig(properties)
-                                    };
-                                    DmSegConfig.encode = function encode(message, writer) {
-                                        if (!writer) writer = $Writer.create();
-                                        if (message.pageSize != null && Object.hasOwnProperty.call(message, "pageSize")) writer.uint32(8).int64(message.pageSize);
-                                        if (message.total != null && Object.hasOwnProperty.call(message, "total")) writer.uint32(16).int64(message.total);
-                                        return writer
-                                    };
-                                    DmSegConfig.encodeDelimited = function encodeDelimited(message, writer) {
-                                        return this.encode(message, writer).ldelim()
-                                    };
-                                    DmSegConfig.decode = function decode(reader, length) {
-                                        if (!(reader instanceof $Reader)) reader = $Reader.create(reader);
-                                        var end = length === undefined ? reader.len : reader.pos + length,
-                                            message = new $root.bilibili.community.service.dm.v1.DmSegConfig;
-                                        while (reader.pos < end) {
-                                            var tag = reader.uint32();
-                                            switch (tag >>> 3) {
-                                                case 1:
-                                                    message.pageSize = reader.int64();
-                                                    break;
-                                                case 2:
-                                                    message.total = reader.int64();
-                                                    break;
-                                                default:
-                                                    reader.skipType(tag & 7);
-                                                    break
-                                            }
-                                        }
-                                        return message
-                                    };
-                                    DmSegConfig.decodeDelimited = function decodeDelimited(reader) {
-                                        if (!(reader instanceof $Reader)) reader = new $Reader(reader);
-                                        return this.decode(reader, reader.uint32())
-                                    };
-                                    DmSegConfig.verify = function verify(message) {
-                                        if (typeof message !== "object" || message === null) return "object expected";
-                                        if (message.pageSize != null && message.hasOwnProperty("pageSize")) if (!$util.isInteger(message.pageSize) && !(message.pageSize && $util.isInteger(message.pageSize.low) && $util.isInteger(message.pageSize.high))) return "pageSize: integer|Long expected";
-                                        if (message.total != null && message.hasOwnProperty("total")) if (!$util.isInteger(message.total) && !(message.total && $util.isInteger(message.total.low) && $util.isInteger(message.total.high))) return "total: integer|Long expected";
-                                        return null
-                                    };
-                                    DmSegConfig.fromObject = function fromObject(object) {
-                                        if (object instanceof $root.bilibili.community.service.dm.v1.DmSegConfig) return object;
-                                        var message = new $root.bilibili.community.service.dm.v1.DmSegConfig;
-                                        if (object.pageSize != null) if ($util.Long) (message.pageSize = $util.Long.fromValue(object.pageSize)).unsigned = false; else if (typeof object.pageSize === "string") message.pageSize = parseInt(object.pageSize, 10); else if (typeof object.pageSize === "number") message.pageSize = object.pageSize; else if (typeof object.pageSize === "object") message.pageSize = new $util.LongBits(object.pageSize.low >>> 0, object.pageSize.high >>> 0).toNumber();
-                                        if (object.total != null) if ($util.Long) (message.total = $util.Long.fromValue(object.total)).unsigned = false; else if (typeof object.total === "string") message.total = parseInt(object.total, 10); else if (typeof object.total === "number") message.total = object.total; else if (typeof object.total === "object") message.total = new $util.LongBits(object.total.low >>> 0, object.total.high >>> 0).toNumber();
-                                        return message
-                                    };
-                                    DmSegConfig.toObject = function toObject(message, options) {
-                                        if (!options) options = {};
-                                        var object = {};
-                                        if (options.defaults) {
-                                            if ($util.Long) {
-                                                var long = new $util.Long(0, 0, false);
-                                                object.pageSize = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long
-                                            } else object.pageSize = options.longs === String ? "0" : 0;
-                                            if ($util.Long) {
-                                                var long = new $util.Long(0, 0, false);
-                                                object.total = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long
-                                            } else object.total = options.longs === String ? "0" : 0
-                                        }
-                                        if (message.pageSize != null && message.hasOwnProperty("pageSize")) if (typeof message.pageSize === "number") object.pageSize = options.longs === String ? String(message.pageSize) : message.pageSize; else object.pageSize = options.longs === String ? $util.Long.prototype.toString.call(message.pageSize) : options.longs === Number ? new $util.LongBits(message.pageSize.low >>> 0, message.pageSize.high >>> 0).toNumber() : message.pageSize;
-                                        if (message.total != null && message.hasOwnProperty("total")) if (typeof message.total === "number") object.total = options.longs === String ? String(message.total) : message.total; else object.total = options.longs === String ? $util.Long.prototype.toString.call(message.total) : options.longs === Number ? new $util.LongBits(message.total.low >>> 0, message.total.high >>> 0).toNumber() : message.total;
-                                        return object
-                                    };
-                                    DmSegConfig.prototype.toJSON = function toJSON() {
-                                        return this.constructor.toObject(this, $protobuf.util.toJSONOptions)
-                                    };
-                                    return DmSegConfig
-                                }();
-                                v1.DanmakuFlagConfig = function () {
-                                    function DanmakuFlagConfig(properties) {
-                                        if (properties) for (var keys = Object.keys(properties), i = 0; i < keys.length; ++i) if (properties[keys[i]] != null) this[keys[i]] = properties[keys[i]]
-                                    }
-
-                                    DanmakuFlagConfig.prototype.recFlag = 0;
-                                    DanmakuFlagConfig.prototype.recText = "";
-                                    DanmakuFlagConfig.prototype.recSwitch = 0;
-                                    DanmakuFlagConfig.create = function create(properties) {
-                                        return new DanmakuFlagConfig(properties)
-                                    };
-                                    DanmakuFlagConfig.encode = function encode(message, writer) {
-                                        if (!writer) writer = $Writer.create();
-                                        if (message.recFlag != null && Object.hasOwnProperty.call(message, "recFlag")) writer.uint32(8).int32(message.recFlag);
-                                        if (message.recText != null && Object.hasOwnProperty.call(message, "recText")) writer.uint32(18).string(message.recText);
-                                        if (message.recSwitch != null && Object.hasOwnProperty.call(message, "recSwitch")) writer.uint32(24).int32(message.recSwitch);
-                                        return writer
-                                    };
-                                    DanmakuFlagConfig.encodeDelimited = function encodeDelimited(message, writer) {
-                                        return this.encode(message, writer).ldelim()
-                                    };
-                                    DanmakuFlagConfig.decode = function decode(reader, length) {
-                                        if (!(reader instanceof $Reader)) reader = $Reader.create(reader);
-                                        var end = length === undefined ? reader.len : reader.pos + length,
-                                            message = new $root.bilibili.community.service.dm.v1.DanmakuFlagConfig;
-                                        while (reader.pos < end) {
-                                            var tag = reader.uint32();
-                                            switch (tag >>> 3) {
-                                                case 1:
-                                                    message.recFlag = reader.int32();
-                                                    break;
-                                                case 2:
-                                                    message.recText = reader.string();
-                                                    break;
-                                                case 3:
-                                                    message.recSwitch = reader.int32();
-                                                    break;
-                                                default:
-                                                    reader.skipType(tag & 7);
-                                                    break
-                                            }
-                                        }
-                                        return message
-                                    };
-                                    DanmakuFlagConfig.decodeDelimited = function decodeDelimited(reader) {
-                                        if (!(reader instanceof $Reader)) reader = new $Reader(reader);
-                                        return this.decode(reader, reader.uint32())
-                                    };
-                                    DanmakuFlagConfig.verify = function verify(message) {
-                                        if (typeof message !== "object" || message === null) return "object expected";
-                                        if (message.recFlag != null && message.hasOwnProperty("recFlag")) if (!$util.isInteger(message.recFlag)) return "recFlag: integer expected";
-                                        if (message.recText != null && message.hasOwnProperty("recText")) if (!$util.isString(message.recText)) return "recText: string expected";
-                                        if (message.recSwitch != null && message.hasOwnProperty("recSwitch")) if (!$util.isInteger(message.recSwitch)) return "recSwitch: integer expected";
-                                        return null
-                                    };
-                                    DanmakuFlagConfig.fromObject = function fromObject(object) {
-                                        if (object instanceof $root.bilibili.community.service.dm.v1.DanmakuFlagConfig) return object;
-                                        var message = new $root.bilibili.community.service.dm.v1.DanmakuFlagConfig;
-                                        if (object.recFlag != null) message.recFlag = object.recFlag | 0;
-                                        if (object.recText != null) message.recText = String(object.recText);
-                                        if (object.recSwitch != null) message.recSwitch = object.recSwitch | 0;
-                                        return message
-                                    };
-                                    DanmakuFlagConfig.toObject = function toObject(message, options) {
-                                        if (!options) options = {};
-                                        var object = {};
-                                        if (options.defaults) {
-                                            object.recFlag = 0;
-                                            object.recText = "";
-                                            object.recSwitch = 0
-                                        }
-                                        if (message.recFlag != null && message.hasOwnProperty("recFlag")) object.recFlag = message.recFlag;
-                                        if (message.recText != null && message.hasOwnProperty("recText")) object.recText = message.recText;
-                                        if (message.recSwitch != null && message.hasOwnProperty("recSwitch")) object.recSwitch = message.recSwitch;
-                                        return object
-                                    };
-                                    DanmakuFlagConfig.prototype.toJSON = function toJSON() {
-                                        return this.constructor.toObject(this, $protobuf.util.toJSONOptions)
-                                    };
-                                    return DanmakuFlagConfig
-                                }();
-                                v1.DmSegMobileReply = function () {
-                                    function DmSegMobileReply(properties) {
+                                    function DmSegMobileReply(p) {
                                         this.elems = [];
-                                        if (properties) for (var keys = Object.keys(properties), i = 0; i < keys.length; ++i) if (properties[keys[i]] != null) this[keys[i]] = properties[keys[i]]
+                                        if (p)
+                                            for (var ks = Object.keys(p), i = 0; i < ks.length; ++i)
+                                                if (p[ks[i]] != null)
+                                                    this[ks[i]] = p[ks[i]];
                                     }
 
                                     DmSegMobileReply.prototype.elems = $util.emptyArray;
-                                    DmSegMobileReply.create = function create(properties) {
-                                        return new DmSegMobileReply(properties)
-                                    };
-                                    DmSegMobileReply.encode = function encode(message, writer) {
-                                        if (!writer) writer = $Writer.create();
-                                        if (message.elems != null && message.elems.length) for (var i = 0; i < message.elems.length; ++i) $root.bilibili.community.service.dm.v1.DanmakuElem.encode(message.elems[i], writer.uint32(10).fork()).ldelim();
-                                        return writer
+                                    DmSegMobileReply.prototype.state = 0;
+                                    DmSegMobileReply.prototype.aiFlag = null;
 
+                                    DmSegMobileReply.create = function create(properties) {
+                                        return new DmSegMobileReply(properties);
                                     };
-                                    DmSegMobileReply.encodeDelimited = function encodeDelimited(message, writer) {
-                                        return this.encode(message, writer).ldelim()
+
+                                    DmSegMobileReply.encode = function encode(m, w) {
+                                        if (!w)
+                                            w = $Writer.create();
+                                        if (m.elems != null && m.elems.length) {
+                                            for (var i = 0; i < m.elems.length; ++i)
+                                                $root.bilibili.community.service.dm.v1.DanmakuElem.encode(m.elems[i], w.uint32(10).fork()).ldelim();
+                                        }
+                                        if (m.state != null && Object.hasOwnProperty.call(m, "state"))
+                                            w.uint32(16).int32(m.state);
+                                        if (m.aiFlag != null && Object.hasOwnProperty.call(m, "aiFlag"))
+                                            $root.bilibili.community.service.dm.v1.DanmakuAIFlag.encode(m.aiFlag, w.uint32(26).fork()).ldelim();
+                                        return w;
                                     };
-                                    DmSegMobileReply.decode = function decode(reader, length) {
-                                        if (!(reader instanceof $Reader)) reader = $Reader.create(reader);
-                                        var end = length === undefined ? reader.len : reader.pos + length,
-                                            message = new $root.bilibili.community.service.dm.v1.DmSegMobileReply;
-                                        while (reader.pos < end) {
-                                            var tag = reader.uint32();
-                                            switch (tag >>> 3) {
+
+                                    DmSegMobileReply.decode = function decode(r, l) {
+                                        if (!(r instanceof $Reader))
+                                            r = $Reader.create(r);
+                                        var c = l === undefined ? r.len : r.pos + l,
+                                            m = new $root.bilibili.community.service.dm.v1.DmSegMobileReply();
+                                        while (r.pos < c) {
+                                            var t = r.uint32();
+                                            switch (t >>> 3) {
                                                 case 1:
-                                                    if (!(message.elems && message.elems.length)) message.elems = [];
-                                                    message.elems.push($root.bilibili.community.service.dm.v1.DanmakuElem.decode(reader, reader.uint32()));
+                                                    if (!(m.elems && m.elems.length))
+                                                        m.elems = [];
+                                                    m.elems.push($root.bilibili.community.service.dm.v1.DanmakuElem.decode(r, r.uint32()));
+                                                    break;
+                                                case 2:
+                                                    m.state = r.int32();
+                                                    break;
+                                                case 3:
+                                                    m.aiFlag = $root.bilibili.community.service.dm.v1.DanmakuAIFlag.decode(r, r.uint32());
                                                     break;
                                                 default:
-                                                    reader.skipType(tag & 7);
-                                                    break
+                                                    r.skipType(t & 7);
+                                                    break;
                                             }
                                         }
-                                        return message
+                                        return m;
                                     };
-                                    DmSegMobileReply.decodeDelimited = function decodeDelimited(reader) {
-                                        if (!(reader instanceof $Reader)) reader = new $Reader(reader);
-                                        return this.decode(reader, reader.uint32())
+
+                                    return DmSegMobileReply;
+                                })();
+
+                                v1.DanmakuFlag = (function () {
+
+                                    function DanmakuFlag(p) {
+                                        if (p)
+                                            for (var ks = Object.keys(p), i = 0; i < ks.length; ++i)
+                                                if (p[ks[i]] != null)
+                                                    this[ks[i]] = p[ks[i]];
+                                    }
+
+                                    DanmakuFlag.prototype.dmid = $util.Long ? $util.Long.fromBits(0, 0, false) : 0;
+                                    DanmakuFlag.prototype.flag = 0;
+
+                                    DanmakuFlag.create = function create(properties) {
+                                        return new DanmakuFlag(properties);
                                     };
-                                    DmSegMobileReply.verify = function verify(message) {
-                                        if (typeof message !== "object" || message === null) return "object expected";
-                                        if (message.elems != null && message.hasOwnProperty("elems")) {
-                                            if (!Array.isArray(message.elems)) return "elems: array expected";
-                                            for (var i = 0; i < message.elems.length; ++i) {
-                                                var error = $root.bilibili.community.service.dm.v1.DanmakuElem.verify(message.elems[i]);
-                                                if (error) return "elems." + error
+
+                                    DanmakuFlag.encode = function encode(m, w) {
+                                        if (!w)
+                                            w = $Writer.create();
+                                        if (m.dmid != null && Object.hasOwnProperty.call(m, "dmid"))
+                                            w.uint32(8).int64(m.dmid);
+                                        if (m.flag != null && Object.hasOwnProperty.call(m, "flag"))
+                                            w.uint32(16).uint32(m.flag);
+                                        return w;
+                                    };
+
+                                    DanmakuFlag.decode = function decode(r, l) {
+                                        if (!(r instanceof $Reader))
+                                            r = $Reader.create(r);
+                                        var c = l === undefined ? r.len : r.pos + l,
+                                            m = new $root.bilibili.community.service.dm.v1.DanmakuFlag();
+                                        while (r.pos < c) {
+                                            var t = r.uint32();
+                                            switch (t >>> 3) {
+                                                case 1:
+                                                    m.dmid = r.int64();
+                                                    break;
+                                                case 2:
+                                                    m.flag = r.uint32();
+                                                    break;
+                                                default:
+                                                    r.skipType(t & 7);
+                                                    break;
                                             }
                                         }
-                                        return null
+                                        return m;
                                     };
-                                    DmSegMobileReply.fromObject = function fromObject(object) {
-                                        if (object instanceof $root.bilibili.community.service.dm.v1.DmSegMobileReply) return object;
-                                        var message = new $root.bilibili.community.service.dm.v1.DmSegMobileReply;
-                                        if (object.elems) {
-                                            if (!Array.isArray(object.elems)) throw TypeError(".bilibili.community.service.dm.v1.DmSegMobileReply.elems: array expected");
-                                            message.elems = [];
-                                            for (var i = 0; i < object.elems.length; ++i) {
-                                                if (typeof object.elems[i] !== "object") throw TypeError(".bilibili.community.service.dm.v1.DmSegMobileReply.elems: object expected");
-                                                message.elems[i] = $root.bilibili.community.service.dm.v1.DanmakuElem.fromObject(object.elems[i])
+
+                                    return DanmakuFlag;
+                                })();
+
+                                v1.DanmakuAIFlag = (function () {
+
+                                    function DanmakuAIFlag(p) {
+                                        this.dmFlags = [];
+                                        if (p)
+                                            for (var ks = Object.keys(p), i = 0; i < ks.length; ++i)
+                                                if (p[ks[i]] != null)
+                                                    this[ks[i]] = p[ks[i]];
+                                    }
+
+                                    DanmakuAIFlag.prototype.dmFlags = $util.emptyArray;
+
+                                    DanmakuAIFlag.create = function create(properties) {
+                                        return new DanmakuAIFlag(properties);
+                                    };
+
+                                    DanmakuAIFlag.encode = function encode(m, w) {
+                                        if (!w)
+                                            w = $Writer.create();
+                                        if (m.dmFlags != null && m.dmFlags.length) {
+                                            for (var i = 0; i < m.dmFlags.length; ++i)
+                                                $root.bilibili.community.service.dm.v1.DanmakuFlag.encode(m.dmFlags[i], w.uint32(10).fork()).ldelim();
+                                        }
+                                        return w;
+                                    };
+
+                                    DanmakuAIFlag.decode = function decode(r, l) {
+                                        if (!(r instanceof $Reader))
+                                            r = $Reader.create(r);
+                                        var c = l === undefined ? r.len : r.pos + l,
+                                            m = new $root.bilibili.community.service.dm.v1.DanmakuAIFlag();
+                                        while (r.pos < c) {
+                                            var t = r.uint32();
+                                            switch (t >>> 3) {
+                                                case 1:
+                                                    if (!(m.dmFlags && m.dmFlags.length))
+                                                        m.dmFlags = [];
+                                                    m.dmFlags.push($root.bilibili.community.service.dm.v1.DanmakuFlag.decode(r, r.uint32()));
+                                                    break;
+                                                default:
+                                                    r.skipType(t & 7);
+                                                    break;
                                             }
                                         }
-                                        return message
+                                        return m;
                                     };
-                                    DmSegMobileReply.toObject = function toObject(message, options) {
-                                        if (!options) options = {};
-                                        var object = {};
-                                        if (options.arrays || options.defaults) object.elems = [];
-                                        if (message.elems && message.elems.length) {
-                                            object.elems = [];
-                                            for (var j = 0; j < message.elems.length; ++j) object.elems[j] = $root.bilibili.community.service.dm.v1.DanmakuElem.toObject(message.elems[j], options)
-                                        }
-                                        return object
-                                    };
-                                    DmSegMobileReply.prototype.toJSON = function toJSON() {
-                                        return this.constructor.toObject(this, $protobuf.util.toJSONOptions)
-                                    };
-                                    return DmSegMobileReply
-                                }();
-                                v1.DanmakuElem = function () {
-                                    function DanmakuElem(properties) {
-                                        if (properties) for (var keys = Object.keys(properties), i = 0; i < keys.length; ++i) if (properties[keys[i]] != null) this[keys[i]] = properties[keys[i]]
+
+                                    return DanmakuAIFlag;
+                                })();
+
+                                v1.DanmakuElem = (function () {
+
+                                    function DanmakuElem(p) {
+                                        if (p)
+                                            for (var ks = Object.keys(p), i = 0; i < ks.length; ++i)
+                                                if (p[ks[i]] != null)
+                                                    this[ks[i]] = p[ks[i]];
                                     }
 
                                     DanmakuElem.prototype.id = $util.Long ? $util.Long.fromBits(0, 0, false) : 0;
@@ -2215,168 +2067,122 @@ let danmuHookResponse = function () {
                                     DanmakuElem.prototype.action = "";
                                     DanmakuElem.prototype.pool = 0;
                                     DanmakuElem.prototype.idStr = "";
+                                    DanmakuElem.prototype.attr = 0;
+                                    DanmakuElem.prototype.animation = "";
+
                                     DanmakuElem.create = function create(properties) {
-                                        return new DanmakuElem(properties)
+                                        return new DanmakuElem(properties);
                                     };
-                                    DanmakuElem.encode = function encode(message, writer) {
-                                        if (!writer) writer = $Writer.create();
-                                        if (message.id != null && Object.hasOwnProperty.call(message, "id")) writer.uint32(8).int64(message.id);
-                                        if (message.progress != null && Object.hasOwnProperty.call(message, "progress")) writer.uint32(16).int32(message.progress);
-                                        if (message.mode != null && Object.hasOwnProperty.call(message, "mode")) writer.uint32(24).int32(message.mode);
-                                        if (message.fontsize != null && Object.hasOwnProperty.call(message, "fontsize")) writer.uint32(32).int32(message.fontsize);
-                                        if (message.color != null && Object.hasOwnProperty.call(message, "color")) writer.uint32(40).uint32(message.color);
-                                        if (message.midHash != null && Object.hasOwnProperty.call(message, "midHash")) writer.uint32(50).string(message.midHash);
-                                        if (message.content != null && Object.hasOwnProperty.call(message, "content")) writer.uint32(58).string(message.content);
-                                        if (message.ctime != null && Object.hasOwnProperty.call(message, "ctime")) writer.uint32(64).int64(message.ctime);
-                                        if (message.weight != null && Object.hasOwnProperty.call(message, "weight")) writer.uint32(72).int32(message.weight);
-                                        if (message.action != null && Object.hasOwnProperty.call(message, "action")) writer.uint32(82).string(message.action);
-                                        if (message.pool != null && Object.hasOwnProperty.call(message, "pool")) writer.uint32(88).int32(message.pool);
-                                        if (message.idStr != null && Object.hasOwnProperty.call(message, "idStr")) writer.uint32(98).string(message.idStr);
-                                        return writer
+
+                                    DanmakuElem.encode = function encode(m, w) {
+                                        if (!w)
+                                            w = $Writer.create();
+                                        if (m.id != null && Object.hasOwnProperty.call(m, "id"))
+                                            w.uint32(8).int64(m.id);
+                                        if (m.progress != null && Object.hasOwnProperty.call(m, "progress"))
+                                            w.uint32(16).int32(m.progress);
+                                        if (m.mode != null && Object.hasOwnProperty.call(m, "mode"))
+                                            w.uint32(24).int32(m.mode);
+                                        if (m.fontsize != null && Object.hasOwnProperty.call(m, "fontsize"))
+                                            w.uint32(32).int32(m.fontsize);
+                                        if (m.color != null && Object.hasOwnProperty.call(m, "color"))
+                                            w.uint32(40).uint32(m.color);
+                                        if (m.midHash != null && Object.hasOwnProperty.call(m, "midHash"))
+                                            w.uint32(50).string(m.midHash);
+                                        if (m.content != null && Object.hasOwnProperty.call(m, "content"))
+                                            w.uint32(58).string(m.content);
+                                        if (m.ctime != null && Object.hasOwnProperty.call(m, "ctime"))
+                                            w.uint32(64).int64(m.ctime);
+                                        if (m.weight != null && Object.hasOwnProperty.call(m, "weight"))
+                                            w.uint32(72).int32(m.weight);
+                                        if (m.action != null && Object.hasOwnProperty.call(m, "action"))
+                                            w.uint32(82).string(m.action);
+                                        if (m.pool != null && Object.hasOwnProperty.call(m, "pool"))
+                                            w.uint32(88).int32(m.pool);
+                                        if (m.idStr != null && Object.hasOwnProperty.call(m, "idStr"))
+                                            w.uint32(98).string(m.idStr);
+                                        if (m.attr != null && Object.hasOwnProperty.call(m, "attr"))
+                                            w.uint32(104).int32(m.attr);
+                                        if (m.animation != null && Object.hasOwnProperty.call(m, "animation"))
+                                            w.uint32(178).string(m.animation);
+                                        return w;
                                     };
-                                    DanmakuElem.encodeDelimited = function encodeDelimited(message, writer) {
-                                        return this.encode(message, writer).ldelim()
-                                    };
-                                    DanmakuElem.decode = function decode(reader, length) {
-                                        if (!(reader instanceof $Reader)) reader = $Reader.create(reader);
-                                        var end = length === undefined ? reader.len : reader.pos + length,
-                                            message = new $root.bilibili.community.service.dm.v1.DanmakuElem;
-                                        while (reader.pos < end) {
-                                            var tag = reader.uint32();
-                                            switch (tag >>> 3) {
+
+                                    DanmakuElem.decode = function decode(r, l) {
+                                        if (!(r instanceof $Reader))
+                                            r = $Reader.create(r);
+                                        var c = l === undefined ? r.len : r.pos + l,
+                                            m = new $root.bilibili.community.service.dm.v1.DanmakuElem();
+                                        while (r.pos < c) {
+                                            var t = r.uint32();
+                                            switch (t >>> 3) {
                                                 case 1:
-                                                    message.id = reader.int64();
+                                                    m.id = r.int64();
                                                     break;
                                                 case 2:
-                                                    message.progress = reader.int32();
+                                                    m.progress = r.int32();
                                                     break;
                                                 case 3:
-                                                    message.mode = reader.int32();
+                                                    m.mode = r.int32();
                                                     break;
                                                 case 4:
-                                                    message.fontsize = reader.int32();
+                                                    m.fontsize = r.int32();
                                                     break;
                                                 case 5:
-                                                    message.color = reader.uint32();
+                                                    m.color = r.uint32();
                                                     break;
                                                 case 6:
-                                                    message.midHash = reader.string();
+                                                    m.midHash = r.string();
                                                     break;
                                                 case 7:
-                                                    message.content = reader.string();
+                                                    m.content = r.string();
                                                     break;
                                                 case 8:
-                                                    message.ctime = reader.int64();
+                                                    m.ctime = r.int64();
                                                     break;
                                                 case 9:
-                                                    message.weight = reader.int32();
+                                                    m.weight = r.int32();
                                                     break;
                                                 case 10:
-                                                    message.action = reader.string();
+                                                    m.action = r.string();
                                                     break;
                                                 case 11:
-                                                    message.pool = reader.int32();
+                                                    m.pool = r.int32();
                                                     break;
                                                 case 12:
-                                                    message.idStr = reader.string();
+                                                    m.idStr = r.string();
+                                                    break;
+                                                case 13:
+                                                    m.attr = r.int32();
+                                                    break;
+                                                case 22:
+                                                    m.animation = r.string();
                                                     break;
                                                 default:
-                                                    reader.skipType(tag & 7);
-                                                    break
+                                                    r.skipType(t & 7);
+                                                    break;
                                             }
                                         }
-                                        return message
+                                        return m;
                                     };
-                                    DanmakuElem.decodeDelimited = function decodeDelimited(reader) {
-                                        if (!(reader instanceof $Reader)) reader = new $Reader(reader);
-                                        return this.decode(reader, reader.uint32())
-                                    };
-                                    DanmakuElem.verify = function verify(message) {
-                                        if (typeof message !== "object" || message === null) return "object expected";
-                                        if (message.id != null && message.hasOwnProperty("id")) if (!$util.isInteger(message.id) && !(message.id && $util.isInteger(message.id.low) && $util.isInteger(message.id.high))) return "id: integer|Long expected";
-                                        if (message.progress != null && message.hasOwnProperty("progress")) if (!$util.isInteger(message.progress)) return "progress: integer expected";
-                                        if (message.mode != null && message.hasOwnProperty("mode")) if (!$util.isInteger(message.mode)) return "mode: integer expected";
-                                        if (message.fontsize != null && message.hasOwnProperty("fontsize")) if (!$util.isInteger(message.fontsize)) return "fontsize: integer expected";
-                                        if (message.color != null && message.hasOwnProperty("color")) if (!$util.isInteger(message.color)) return "color: integer expected";
-                                        if (message.midHash != null && message.hasOwnProperty("midHash")) if (!$util.isString(message.midHash)) return "midHash: string expected";
-                                        if (message.content != null && message.hasOwnProperty("content")) if (!$util.isString(message.content)) return "content: string expected";
-                                        if (message.ctime != null && message.hasOwnProperty("ctime")) if (!$util.isInteger(message.ctime) && !(message.ctime && $util.isInteger(message.ctime.low) && $util.isInteger(message.ctime.high))) return "ctime: integer|Long expected";
-                                        if (message.weight != null && message.hasOwnProperty("weight")) if (!$util.isInteger(message.weight)) return "weight: integer expected";
-                                        if (message.action != null && message.hasOwnProperty("action")) if (!$util.isString(message.action)) return "action: string expected";
-                                        if (message.pool != null && message.hasOwnProperty("pool")) if (!$util.isInteger(message.pool)) return "pool: integer expected";
-                                        if (message.idStr != null && message.hasOwnProperty("idStr")) if (!$util.isString(message.idStr)) return "idStr: string expected";
-                                        return null
-                                    };
-                                    DanmakuElem.fromObject = function fromObject(object) {
-                                        if (object instanceof $root.bilibili.community.service.dm.v1.DanmakuElem) return object;
-                                        var message = new $root.bilibili.community.service.dm.v1.DanmakuElem;
-                                        if (object.id != null) if ($util.Long) (message.id = $util.Long.fromValue(object.id)).unsigned = false; else if (typeof object.id === "string") message.id = parseInt(object.id, 10); else if (typeof object.id === "number") message.id = object.id; else if (typeof object.id === "object") message.id = new $util.LongBits(object.id.low >>> 0, object.id.high >>> 0).toNumber();
-                                        if (object.progress != null) message.progress = object.progress | 0;
-                                        if (object.mode != null) message.mode = object.mode | 0;
-                                        if (object.fontsize != null) message.fontsize = object.fontsize | 0;
-                                        if (object.color != null) message.color = object.color >>> 0;
-                                        if (object.midHash != null) message.midHash = String(object.midHash);
-                                        if (object.content != null) message.content = String(object.content);
-                                        if (object.ctime != null) if ($util.Long) (message.ctime = $util.Long.fromValue(object.ctime)).unsigned = false; else if (typeof object.ctime === "string") message.ctime = parseInt(object.ctime, 10); else if (typeof object.ctime === "number") message.ctime = object.ctime; else if (typeof object.ctime === "object") message.ctime = new $util.LongBits(object.ctime.low >>> 0, object.ctime.high >>> 0).toNumber();
-                                        if (object.weight != null) message.weight = object.weight | 0;
-                                        if (object.action != null) message.action = String(object.action);
-                                        if (object.pool != null) message.pool = object.pool | 0;
-                                        if (object.idStr != null) message.idStr = String(object.idStr);
-                                        return message
-                                    };
-                                    DanmakuElem.toObject = function toObject(message, options) {
-                                        if (!options) options = {};
-                                        var object = {};
-                                        if (options.defaults) {
-                                            if ($util.Long) {
-                                                var long = new $util.Long(0, 0, false);
-                                                object.id = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long
-                                            } else object.id = options.longs === String ? "0" : 0;
-                                            object.progress = 0;
-                                            object.mode = 0;
-                                            object.fontsize = 0;
-                                            object.color = 0;
-                                            object.midHash = "";
-                                            object.content = "";
-                                            if ($util.Long) {
-                                                var long = new $util.Long(0, 0, false);
-                                                object.ctime = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long
-                                            } else object.ctime = options.longs === String ? "0" : 0;
-                                            object.weight = 0;
-                                            object.action = "";
-                                            object.pool = 0;
-                                            object.idStr = ""
-                                        }
-                                        if (message.id != null && message.hasOwnProperty("id")) if (typeof message.id === "number") object.id = options.longs === String ? String(message.id) : message.id; else object.id = options.longs === String ? $util.Long.prototype.toString.call(message.id) : options.longs === Number ? new $util.LongBits(message.id.low >>> 0, message.id.high >>> 0).toNumber() : message.id;
-                                        if (message.progress != null && message.hasOwnProperty("progress")) object.progress = message.progress;
-                                        if (message.mode != null && message.hasOwnProperty("mode")) object.mode = message.mode;
-                                        if (message.fontsize != null && message.hasOwnProperty("fontsize")) object.fontsize = message.fontsize;
-                                        if (message.color != null && message.hasOwnProperty("color")) object.color = message.color;
-                                        if (message.midHash != null && message.hasOwnProperty("midHash")) object.midHash = message.midHash;
-                                        if (message.content != null && message.hasOwnProperty("content")) object.content = message.content;
-                                        if (message.ctime != null && message.hasOwnProperty("ctime")) if (typeof message.ctime === "number") object.ctime = options.longs === String ? String(message.ctime) : message.ctime; else object.ctime = options.longs === String ? $util.Long.prototype.toString.call(message.ctime) : options.longs === Number ? new $util.LongBits(message.ctime.low >>> 0, message.ctime.high >>> 0).toNumber() : message.ctime;
-                                        if (message.weight != null && message.hasOwnProperty("weight")) object.weight = message.weight;
-                                        if (message.action != null && message.hasOwnProperty("action")) object.action = message.action;
-                                        if (message.pool != null && message.hasOwnProperty("pool")) object.pool = message.pool;
-                                        if (message.idStr != null && message.hasOwnProperty("idStr")) object.idStr = message.idStr;
-                                        return object
-                                    };
-                                    DanmakuElem.prototype.toJSON = function toJSON() {
-                                        return this.constructor.toObject(this, $protobuf.util.toJSONOptions)
-                                    };
-                                    return DanmakuElem
-                                }();
-                                return v1
-                            }();
-                            return dm
-                        }();
-                        return service
-                    }();
-                    return community
-                }();
-                return bilibili
-            }();
-            return $root
+
+                                    return DanmakuElem;
+                                })();
+
+                                return v1;
+                            })();
+
+                            return dm;
+                        })();
+
+                        return service;
+                    })();
+
+                    return community;
+                })();
+
+                return bilibili;
+            })();
         })(protobuf);
         var proto_seg = protobuf.roots.default.bilibili.community.service.dm.v1.DmSegMobileReply;
         var LOG_PROTO = false;
@@ -2470,6 +2276,50 @@ let danmuHookResponse = function () {
             return minDate
         }
 
+        window.danmakuDetail = async function (cid) {
+            let [aldanmu, ndanmu] = await commentDanmaku(cid)
+            aldanmu = []
+            let duration = poolSize2Duration(ndanmu)
+            let lastSegmentIndex = Math.floor(duration / 360) + 1
+            mergeDanmu(aldanmu, await loadProtoDanmu("https://api.bilibili.com/x/v2/dm/web/history/seg.so?type=1&date="
+                + getdate(new Date()) + "&oid=" + cid.toString()))
+            while (true) {
+                let ldanmu = await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
+                    + cid + '&segment_index=' + lastSegmentIndex)
+                if (!ldanmu) {
+                    lastSegmentIndex -= 1
+                } else {
+                    mergeDanmu(aldanmu, ldanmu)
+                    break
+                }
+            }
+            let last = 0
+            aldanmu.forEach(elem => {
+                if (elem.progress > last) last = elem.progress
+            })
+            let latest = 0
+            aldanmu.forEach(elem => {
+                if (elem.ctime > latest) latest = elem.ctime
+            })
+            return [last, latest]
+        }
+
+        window.commentDanmaku = async function commentDanmaku(cid) {
+            let url = 'https://comment.bilibili.com/' + cid + '.xml'
+            let sdanmu = null
+            while (sdanmu == null) {
+                sdanmu = await xhrGet(url)
+            }
+            let ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
+            if (ndanmu === 8000 && duration !== null) {
+                ndanmu = parseInt((duration / 24 / 60) * 3000)
+            }
+            let ldanmu
+            if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
+                ldanmu = window.xml2danmu(sdanmu)
+            }
+            return [ldanmu, ndanmu]
+        }
 
         async function allProtobufDanmu(cid, duration) {
             let segIndex = 0, aldanmu = []
@@ -2478,11 +2328,12 @@ let danmuHookResponse = function () {
 
                 let tldanmu = await loadProtoDanmu('https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid='
                     + cid + '&segment_index=' + segIndex)
-                if (tldanmu.length === 0) {
-                    break
-                }
+                // if (tldanmu.length === 0) {
+                //     break
+                // }
+
                 tldanmu = colorFilter(tldanmu)
-                tldanmu = await danmuFilter(tldanmu)
+                tldanmu = await danmuFilter(tldanmu, null, cid)
                 mergeDanmu(aldanmu, tldanmu)
                 if (segIndex * 360 > duration) {
                     break
@@ -2516,12 +2367,17 @@ let danmuHookResponse = function () {
                                 if (xhr.status === 200) {
                                     try {
                                         let lpdanmu = proto_seg.decode(new Uint8Array(xhr.response));
+                                        lpdanmu.elems.forEach((e) => {
+                                            if (!e.progress) e.progress = 0
+                                        })
                                         resolve(lpdanmu.elems)
                                     } catch (e) {
                                         console.log(e)
                                         resolve([])
                                     }
 
+                                } else if (xhr.status === 304) {
+                                    resolve(null)
                                 } else {
                                     console.log('XhrError=', retry, '/', xhr)
                                     if (retry < 3) {
@@ -2543,28 +2399,20 @@ let danmuHookResponse = function () {
         }
 
         return [
-            async function (cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
+            async function moreFiltedHistory(cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
                 let date = new Date();
                 date.setTime(date.getTime() - 86400000)
                 console.log('GetDanmuFor CID' + cid)
                 let aldanmu = [], lfiltedDanmu = [], ldanmu = []
                 let ndanmu, ondanmu
-                let url = 'https://comment.bilibili.com/' + cid + '.xml'
-                let sdanmu = null
-                while (sdanmu == null) {
-                    sdanmu = await xhrGet(url)
-                }
-                ondanmu = ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
+                [ldanmu, ondanmu] = await commentDanmaku(cid)
+                ndanmu = ondanmu
                 if (ndanmu === 8000 && duration !== null) {
                     ndanmu = parseInt((duration / 24 / 60) * 3000)
                 }
-                if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
-                    ldanmu = window.xml2danmu(sdanmu)
-                    // ldanmu=[]
-                    if (ldanmu.length < ondanmu * 0.1) {
-                        return [ldanmu, ndanmu, ldanmu.length]
-                    }
-                }
+                // if (ldanmu.length < ondanmu * 0.1) {
+                //     return [ldanmu, ndanmu, ldanmu.length]
+                // }
                 let isStart = true
                 let result = null
                 while (true) {
@@ -2577,7 +2425,7 @@ let danmuHookResponse = function () {
                     }
                     let oldanmu = colorFilter(ldanmu)
                     aldanmu = mergeDanmu(aldanmu, oldanmu)
-                    lfiltedDanmu = mergeDanmu(lfiltedDanmu, await danmuFilter(oldanmu))
+                    lfiltedDanmu = mergeDanmu(lfiltedDanmu, await danmuFilter(oldanmu, null, cid))
                     if (!isStart && ldanmu.length < Math.min(ondanmu, 5000) * 0.9) {
                         result = [aldanmu, ondanmu, aldanmu.length]
                         break
@@ -2602,7 +2450,7 @@ let danmuHookResponse = function () {
                 }
                 return result
             },
-            function (ldanmu, segIndex) {
+            function ldanmu_to_proto_seg(ldanmu, segIndex) {
                 let res = [];
                 // if (ndanmu * extensionSetting.danmuRate > ldanmu.length) {
                 //     ldanmu = mergeDanmu(ldanmu,
@@ -2665,6 +2513,25 @@ let danmuHookResponse = function () {
         }
     }
 
+    function poolSize2Duration(poolSize) {
+        let lPoolSize = [
+            [0, 100],
+            [30, 300],
+            [60, 500],
+            [180, 1000],
+            [600, 1500],
+            [900, 3000],
+            [1500, 4000],
+            [2400, 6000],
+            [3600, 8000],
+        ]
+
+        for (let i = 0; i < lPoolSize.length; i += 1) {
+            if (poolSize === lPoolSize[i][1]) {
+                return lPoolSize[i + 1][0]
+            }
+        }
+    }
 
     let mergeServerDanmaku = function () {
         'use strict'
@@ -2675,7 +2542,7 @@ let danmuHookResponse = function () {
         }]
 
 
-        function applyOffset(ldanmu, loffset, startOffset = null) {
+        window.applyOffset = function applyOffset(ldanmu, loffset, startOffset = null) {
             let ioffset = 0
             if (!startOffset) startOffset = 0
             ldanmu.sort(function (a, b) {
@@ -2690,6 +2557,25 @@ let danmuHookResponse = function () {
                 ldanmu[idanmu].progress = Math.floor(ldanmu[idanmu].progress + loffset[ioffset].offset_seconds * 1000 + startOffset * 1000)
                 if (ldanmu[idanmu].progress < 0) {
                     ldanmu[idanmu].progress = 50
+                }
+            }
+            return ldanmu
+        }
+
+        window.applyTimedOffset = function applyTimedOffset(ldanmu, loffset, startOffset = null) {
+            let ioffset = 0
+            ldanmu.sort(function (a, b) {
+                return a.ctime - b.ctime
+            })
+            for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
+                if ((ioffset + 1) < loffset.length &&
+                    (ldanmu[idanmu].ctime >= loffset[ioffset + 1].timestamp)
+                ) {
+                    ioffset += 1
+                }
+                ldanmu[idanmu].progress = Math.floor(ldanmu[idanmu].progress + loffset[ioffset].offset_seconds * 1000)
+                if (ldanmu[idanmu].progress < 0) {
+                    ldanmu[idanmu].progress = 0
                 }
             }
             return ldanmu
@@ -2718,13 +2604,14 @@ let danmuHookResponse = function () {
             let ldanmu = []
             let lsn = JSON.parse(xhrResponse.getResponseHeader('content-type').slice(25))
             for (let i = 0; i < lsn.length; i++) {
-                let cid = lsn[i]
+                let cid = lsn[i], prefix
                 if (typeof (cid) === 'string') {
                     let chatserver = null
                     if (cid.startsWith('sn')) {
                         chatserver = 'ani.gamer.com.tw'
                     } else if (cid.startsWith('so') || cid.startsWith('sm')) {
                         chatserver = 'nicovideo.jp'
+                        prefix = cid.slice(0, 2)
                     } else if (cid.startsWith('ss')) {
                         chatserver = 'chat.bilibili.com'
                     } else {
@@ -2734,6 +2621,7 @@ let danmuHookResponse = function () {
                         chatserver: chatserver,
                         ss: parseInt(cid.slice(2))
                     }
+                    if (prefix) lsn[i].prefix = prefix
                     let largv = cid.split('&')
                     for (let j = 1; j < largv.length; j += 1) {
                         let [key, value] = largv[j].split('=')
@@ -2746,8 +2634,9 @@ let danmuHookResponse = function () {
                     let res, cid = null
                     if (snDict['chatserver'] === 'ani.gamer.com.tw') {
                         try {
+                            cid = 'sn' + snDict['ss']
                             res = await dmFengDanmaku(snDict['ss'])
-                            res = await danmuFilter(res, outsideFliter)
+                            res = await danmuFilter(res, outsideFliter, cid)
                             if (snDict.startOffset && !extensionSetting.reverseStartOffset) {
                                 res.forEach(function (danmu) {
                                     danmu.progress += snDict.startOffset * 1000
@@ -2757,24 +2646,24 @@ let danmuHookResponse = function () {
                             if (snDict.offset) {
                                 res = applyOffset(res, snDict.offset, snDict.startOffset)
                             }
-                            cid = 'sn' + snDict['ss']
                         } catch (e) {
                             console.log(e)
                         }
                     } else if (snDict['chatserver'] === 'nicovideo.jp') {
+                        cid = snDict.prefix + snDict['ss']
                         res = parseNicoServerResponse(nicoDanmu, ldanmu.length, true)
-                        res = await danmuFilter(res, outsideFliter)
+                        res = await danmuFilter(res, outsideFliter, cid)
                         if (snDict.startOffset && !extensionSetting.reverseStartOffset) {
                             res.forEach(function (danmu) {
                                 danmu.progress += snDict.startOffset * 1000
                             })
                         }
-                        cid = 'so' + snDict['ss']
                     } else if (snDict.chatserver === 'chat.bilibili.com') {
                         let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + snDict.ss))
                         if (ipage > data.result.main_section.episodes.length - 1) continue
                         cid = data.result.main_section.episodes[ipage].cid
                         let aid = data.result.main_section.episodes[ipage].aid
+
                         if (snDict.hasOwnProperty('offset')) {
                             res = (await moreFiltedHistory(cid, duration, existDanmuNum + ldanmu.length, -1))[0]
                             if (snDict.offset === 'default') {
@@ -2800,6 +2689,24 @@ let danmuHookResponse = function () {
                                 }
                             }
                         }
+                        if (res && snDict.hasOwnProperty('timedOffset')) {
+                            applyTimedOffset(res, snDict.timedOffset)
+                        }
+                    } else if (snDict['chatserver'] === 'this') {
+                        ldanmu.timedOffset = snDict['timedOffset']
+                        if (callback) {
+                            callback(null, null, {
+                                type: 'applyTimedOffset',
+                                timedOffset: ldanmu.timedOffset
+                            })
+                            for (let dldanmu of window.ldldanmu) {
+                                for (let ddanmu of dldanmu.ldanmu) {
+                                    if (ddanmu.cid === cid) {
+                                        applyTimedOffset(ldanmu, ldanmu.timedOffset)
+                                    }
+                                }
+                            }
+                        }
                     } else if (typeof (snDict) === 'string' && snDict[0] === 'c') {
                         cid = snDict.slice(1)
                         res = (await moreFiltedHistory(cid))[0]
@@ -2817,6 +2724,7 @@ let danmuHookResponse = function () {
                     console.log('Error in', snDict, e)
                 }
             }
+
             return ldanmu
         }
     }();
@@ -2988,11 +2896,11 @@ let danmuHookResponse = function () {
             return ldanmu
         }
 
-        return async function (callback, aid, cid, ipage, duration, ndanmu, existDanmuNum, extraInfo) {
+        return async function mergeDescDanmaku(callback, aid, cid, ipage, duration, ndanmu, existDanmuNum, extraInfo) {
             try {
                 let ldanmu = []
                 if (bindAid && bindAid.indexOf(aid.toString()) !== -1) {
-                    return mergeServerDanmaku('av' + aid, ipage, duration, ndanmu, null, existDanmuNum)
+                    return mergeServerDanmaku(callback, cid, 'av' + aid, ipage, duration, ndanmu, null, existDanmuNum)
                 }
                 if (yuyuyu.hasOwnProperty(cid.toString())) {
                     for (let ocid of yuyuyu[cid.toString()]) {
@@ -3012,8 +2920,21 @@ let danmuHookResponse = function () {
                     ldanmu.push({cid: extraInfo.niconico, ldanmu: tldanmu})
                     if (callback) callback({cid: extraInfo.niconico, ldanmu: tldanmu})
                 }
+                if (extraInfo.hasOwnProperty('mid')) {
+                    if (bindAid && bindAid.indexOf('mid_' + extraInfo.mid) !== -1) {
+                        let result = JSON.parse(await xhrGet(danmuServerDomain + '/bindUserDanmaku?mid='
+                            + extraInfo.mid + '&duration=' + duration + '&pubdate=' + extraInfo.pubdate))
+                        if (/^sm\d+$/.exec(result[0].id)) {
+                            let tldanmu = await nicoDanmu(result[0].id, 0, ndanmu)
+                            applyOffset(tldanmu, [{progress: 0, offset_seconds: duration - result[0].duration}])
+                            ldanmu.push({cid: result[0].id, ldanmu: tldanmu})
+                            if (callback) callback({cid: result[0].id, ldanmu: tldanmu})
+                        }
+                    }
+                }
                 return ldanmu
             } catch (e) {
+                console.log(e)
                 for (let i = 0; i < ldldanmu; i++) {
                     if (ldldanmu[i]['cid'] === cid) {
                         ldldanmu.splice(i, 1)
@@ -3074,7 +2995,7 @@ let danmuHookResponse = function () {
             let ldanmu
             if (cid.name) {
                 let zip = new JSZip();
-                let folder=zip.folder(cid.name)
+                let folder = zip.folder(cid.name)
 
 
                 for (let sn of cid.lsn) {
@@ -3096,16 +3017,22 @@ let danmuHookResponse = function () {
                 let zip = new JSZip();
 
                 await testServer()
-                let data = JSON.parse(await xhrGet('https://bangumi.bilibili.com/view/web_api/season?season_id=' + cid.slice(2)))
+                let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + cid.slice(2)))
+                let episodeInfo = JSON.parse(await xhrGet('https://bangumi.bilibili.com/view/web_api/season?season_id=' + cid.slice(2)))
                 let i = 0
                 extensionSetting.translateNicoComment = true
                 extensionSetting.translateThreshold = 1
                 extensionSetting.nicoDanmuRate = 100
                 extensionSetting.reverseStartOffset = true
                 extensionSetting.notReturnProtobuf = true
-                for (let episode of data.result.episodes) {
+                for (let episode of data.result.main_section.episodes) {
                     ldanmu = await danmuHookResponse(episode.cid, episode.aid, i, cid.slice(2))
-                    let fileName = episode.index + ' ' + episode.index_title + ' '
+                    let fileName
+                    if (episode.index) {
+                        fileName = episode.index + ' ' + episode.index_title + ' '
+                    } else {
+                        fileName = episode.title + ' ' + episode.long_title
+                    }
                     console.log(fileName)
                     for (let tldanmu of ldanmu) {
                         tldanmu.cid = tldanmu.cid.toString()
@@ -3127,14 +3054,14 @@ let danmuHookResponse = function () {
                     }
                 })
                     .then(function (content) {
-                        downloadFile(data.result.title + ".zip", content);
+                        downloadFile(episodeInfo.result.title + ".zip", content);
                     });
                 await loadConfig()
                 return
             } else if (cid.startsWith('sn')) {
                 ldanmu = await dmFengDanmaku(cid.slice(2))
             } else if (cid.startsWith('so') || cid.startsWith('sm')) {
-                ldanmu = await nicoDanmu(cid, 0, ndanmu)
+                ldanmu = await nicoDanmu(cid, 0, ndanmu * extensionSetting.nicoDanmuRate)
             } else {
                 ldanmu = (await moreFiltedHistory(cid))[0]
                 cid = 'cid' + cid
@@ -3147,10 +3074,28 @@ let danmuHookResponse = function () {
 
         }
     }();
+    window.previewDanmaku = function (xml, cid = null) {
+        let dldanmu
+        if (!cid) {
+            dldanmu = ldldanmu[ldldanmu.length - 1]
+        } else {
+            for (let d of ldldanmu) {
+                if (d.cid === cid) {
+                    dldanmu = d
+                }
+            }
+        }
+        dldanmu.ldanmu = [{'cid': 0, ldanmu: xml2danmu(xml)}]
+        dldanmu.timestamp = null
+    }
     return async function (cid, aid, ipage, ssid, extraInfo, loadDanmu, sendResponseAsync) {
         let loadDanmakuCallback
         if (loadDanmu) {
-            loadDanmakuCallback = function (ldanmu, twitch = false) {
+            loadDanmakuCallback = function (ldanmu, twitch = false, raw = null) {
+                if (raw) {
+                    console.log('callback', raw, cid)
+                    sendResponseAsync(raw)
+                }
                 console.log('callback', ldanmu, cid)
                 for (let dldanmu of ldldanmu) {
                     if (dldanmu.cid === cid) {
@@ -3175,7 +3120,7 @@ let danmuHookResponse = function () {
         let ldanmu = null, ndanmu = null
         for (let dldanmu of ldldanmu) {
             if (dldanmu['cid'] === cid) {
-                if (new Date().getTime() - dldanmu.timestamp < 300000) {
+                if (!dldanmu.timestamp || new Date().getTime() - dldanmu.timestamp < 300000) {
                     ldanmu = dldanmu['ldanmu']
                     ndanmu = dldanmu['ndnamu']
                 } else {
@@ -3219,7 +3164,11 @@ let danmuHookResponse = function () {
                     outsideDanmaku = mergeDescDanmaku(loadDanmakuCallback, aid, cid, ipage, duration, ndanmu, ldanmu.length, extraInfo)
                 }
                 if (!loadDanmakuCallback) {
-                    ldanmu = ldanmu.concat(await outsideDanmaku)
+                    let nldanmu = await outsideDanmaku
+                    if (nldanmu.timedOffset) {
+                        ldanmu = window.applyTimedOffset(ldanmu, ldanmu.timedOffset)
+                    }
+                    ldanmu = ldanmu.concat(nldanmu)
                 }
             } catch (e) {
                 console.log(e)
@@ -3262,9 +3211,10 @@ let danmuHookResponse = function () {
         } else {
             return ldanmu
         }
-
     }
 }();
+
+let messageHistory = []
 
 chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
         'use strict'
@@ -3279,9 +3229,14 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     message.timeStamp = request.timeStamp
                 }
             }
-            chrome.tabs.sendMessage(sender.tab.id, message)
+            if (sender.tab) {
+                chrome.tabs.sendMessage(sender.tab.id, message)
+            } else {
+                chrome.runtime.sendMessage(undefined, message)
+            }
         }
 
+        messageHistory.push([request, sender])
         if (request.type === "ajax_hook") {
             if (request.url.indexOf('.so') !== -1) {
                 console.log(request.type, request);
@@ -3327,11 +3282,97 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
             console.log(request)
             window.downloadDanmaku(request)
             return sendResponseAsync()
+        } else if (request.type === "currentAdjustVideoInfo") {
+            console.log(request)
+            return sendResponseAsync(window.currentAdjustVideoInfo)
+        } else if (request.type === "danmakuDetail") {
+            let [last, latest] = await window.danmakuDetail(request.cid)
+            return sendResponseAsync({
+                last: last,
+                latest: latest
+            })
+        } else if (request.type === 'previewDanmaku') {
+            console.log(request)
+            previewDanmaku(request.content, request.cid)
+        } else {
+            console.log('unknown message', request)
         }
 
         return sendResponseAsync()
     }
 );
+
+let adjustOffset = (function () {
+    // async function getActiveTab() {
+    //     return new Promise((resolve => {
+    //         chrome.tabs.query({}, function (tabs) {
+    //             for (let tab of tabs) {
+    //                 if (tab.active) {
+    //                     resolve(tab.id)
+    //                 }
+    //             }
+    //             resolve(null)
+    //         })
+    //     }))
+    // }
+    //
+    async function getActiveVideo(tabId) {
+        for (let i = 0; i < messageHistory.length; i += 1) {
+            let message = messageHistory[messageHistory.length - 1 - i]
+            if (message[0].type === 'ajax_hook') {
+                return message
+            }
+        }
+        throw 'tabId ' + tabId + ' not found'
+    }
+
+    function xmlunEscape(content) {
+        return content.replace('；', ';')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '&')
+            .replace(/&gt;/g, '&')
+            .replace(/&apos;/g, '&')
+            .replace(/&quot;/g, '&')
+    }
+
+    async function parseVideoInfo(aid) {
+        let videoInfo
+        let videoPage = await xhrGet('https://www.biliplus.com/all/video/av' + aid + '/')
+        let url = /(\/api\/view_all\?.*?)'/.exec(videoPage)[1]
+        url = 'https://www.biliplus.com' + url
+        let data = JSON.parse(xmlunEscape(await xhrGet(url)))['data']
+        videoInfo = data['info']
+        videoInfo['list'] = data['parts']
+        videoInfo['list'].sortMultiParameter(['page', 'cid'])
+        return videoInfo
+    }
+
+    return async function () {
+        let [request, sender] = await getActiveVideo()
+        try {
+            window.currentAdjustVideoInfo = await parseVideoInfo(request.aid)
+        } catch (e) {
+            window.currentAdjustVideoInfo = await parseVideoInfo(request.extraInfo.firstAid)
+        }
+        chrome.tabs.create({
+            url: chrome.extension.getURL('popup.html'),
+            active: false
+        })
+        // chrome.browserAction.setPopup(
+        //     {'popup': 'popup.html'}
+        // )
+
+    }
+})();
+
+chrome.contextMenus.create({
+    'title': '调整弹幕出现时间',
+    contexts: ["browser_action", 'page_action'],
+
+    'onclick': function (event) {
+        adjustOffset()
+    }
+})
 
 async function buildCrcFilter() {
     'use strict';
