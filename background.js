@@ -22,16 +22,6 @@ let defaultConfig = {
 let danmuServerDomain, hasProxy, ldldanmu, bindAid, extensionSetting, crcFilter
 console.log('test', test);
 
-async function testServer() {
-    danmuServerDomain = 'http://152.32.146.234:400'
-    let res = await xhrGet(danmuServerDomain + '/testConnect')
-    if (res == null) {
-        danmuServerDomain = 'https://delflare505.win:800'
-        res = await xhrGet(danmuServerDomain + '/testConnect')
-    }
-    if (res)
-        bindAid = res.split(',')
-}
 
 async function loadConfig() {
     function format(text, dict) {
@@ -67,7 +57,7 @@ async function loadConfig() {
     extensionSetting = {};
     if (!test) {
         try {
-            extensionSetting = JSON.parse(localStorage['setting'])
+            extensionSetting = JSON.parse(localStorage['extensionSetting'])
             for (let key of Object.keys(extensionSetting)) {
                 if (defaultConfig[key] === undefined) {
                     delete extensionSetting[key]
@@ -78,11 +68,11 @@ async function loadConfig() {
                     extensionSetting[key] = defaultConfig[key]
                 }
             }
-            localStorage['setting'] = JSON.stringify(extensionSetting)
+            localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
         } catch (e) {
-            console.log(e)
+            console.log(e.stack)
             initConfig()
-            localStorage['setting'] = JSON.stringify(extensionSetting)
+            localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
         }
     } else initConfig()
     hasProxy = false
@@ -111,7 +101,7 @@ function editConfig(key, value) {
         }
     }
     extensionSetting[key] = value
-    localStorage['setting'] = JSON.stringify(extensionSetting)
+    localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
     if (key === 'uidFilter') {
         buildCrcFilter().then((res) => {
             crcFilter = res
@@ -194,222 +184,6 @@ let [str, len, searchContent, searchPeriod, ignoreBili] = (function util() {
         }
     ]
 })();
-(function corsManipulate() {
-    function getHeaderIndex(headerArray, newHeader) {
-
-        for (let i = 0, len = headerArray.length; i < len; i++) {
-            let currentHeader = headerArray[i];
-            if (currentHeader.hasOwnProperty('name') && currentHeader.name === newHeader.name) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    function mergeNewHeaders(originalHeaders, newHeaders) {
-        //copy the headers for our own usage
-        let mergedHeaders = originalHeaders.slice();
-        for (let i = 0, len = newHeaders.length; i < len; i++) {
-            let index = getHeaderIndex(mergedHeaders, newHeaders[i]);
-
-            //if a matching header is defined, replace it
-            //if not, add the new header to the end
-            if (index > -1) {
-                mergedHeaders[index] = newHeaders[i];
-            } else {
-                mergedHeaders.push(newHeaders[i]);
-            }
-        }
-
-        return mergedHeaders;
-    }
-
-    function matchUrlToHeaders(url, headersPerUrl) {
-        for (let key in headersPerUrl) {
-            //this match is expecting that the user will specify URL domain
-            //so key==http://www.foo.com && url==http://www.foo.com/?x=bar&whatever=12
-            //maybe support regex in the future
-            if (url.indexOf(key) > -1) {
-                return headersPerUrl[key];
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Responds to Chrome's onHeadersReceived event and injects all headers defined for the given URL
-     * @param info {Object} Contains the request info
-     * @see http://code.google.com/chrome/extensions/webRequest.html#event-onHeadersReceived
-     */
-    function onHeadersReceivedHandler(info) {
-        let desiredHeaders = matchUrlToHeaders(info.url, headersPerUrl);
-
-        if (!desiredHeaders)
-            return {};
-
-        return {responseHeaders: mergeNewHeaders(info.responseHeaders, desiredHeaders)};
-
-    }
-
-    let settings = [
-        {URL: 'https://www.biliplus.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'http://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://textuploader.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-    ]
-    let headersPerUrl = {};
-    let urlsToAlter = [];
-
-    if (settings) {
-        for (let l = settings.length, i = 0; i < l; i++) {
-            //push each URL we wish to watch for into the array
-            urlsToAlter.push(settings[i].URL);
-
-            //use the URL as a key in the dictionary to lookup the specific headers to manipulate for that URL
-            headersPerUrl[settings[i].URL.replace(/\*/g, '')] = settings[i].headers;
-        }
-    }
-
-    chrome.webRequest.onHeadersReceived.addListener(
-        onHeadersReceivedHandler,
-        // filters
-        {
-            urls: urlsToAlter
-        },
-        // extraInfoSpec
-        ["blocking", "responseHeaders"]
-    );
-
-    chrome.webRequest.onErrorOccurred.addListener(
-        function (info) {
-            console.log('ForceCORS was unable to modify headers for: ' + info.url + ' - ' + info.error)
-        },
-        {
-            urls: urlsToAlter
-        }
-    );
-
-    chrome.webRequest.handlerBehaviorChanged();
-    return true
-})();
-
-
-async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr = false) {
-    console.log('Get', url)
-    const xhr = new XMLHttpRequest();
-    try {
-        if (timeout !== null) {
-            xhr.timeout = timeout
-        }
-        xhr.open("get", url, true);
-        if (header !== null) {
-            for (let key in header) {
-                xhr.setRequestHeader(key, header[key])
-            }
-        }
-        xhr.send()
-
-        return new Promise(
-            (resolve) => {
-                xhr.onreadystatechange = async () => {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            if (returnXhr) {
-                                resolve(xhr)
-                            } else {
-                                resolve(xhr.responseText)
-                            }
-                        } else {
-                            console.log('XhrError=', retry, '/', xhr)
-                            if (retry < 1) {
-                                resolve(await xhrGet(url, timeout, header, retry + 1), returnXhr)
-                            } else {
-                                resolve(null)
-                            }
-                        }
-                    }
-                }
-            }
-        )
-    } catch (e) {
-        console.log('XhrError=', retry, '/', xhr, e)
-        if (danmuServerDomain === 'https://delflare505.win:800') danmuServerDomain = 'http://152.32.146.234:400'
-        if (retry < 1) {
-            return (await xhrGet(url, timeout, header, retry + 1))
-        }
-        return null
-    }
-}
-
-async function xhrPost(option) {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", option.url, true);
-
-    if (!option.mode) {
-        option.mode = 'json'
-    }
-    if (option.timeout) {
-        xhr.timeout = option.timeout
-    }
-    if (option.headers) {
-        for (let key in option.headers) {
-            xhr.setRequestHeader(key, option.headers[key])
-        }
-    }
-    if (!option.retry) {
-        option.retry = 0
-    }
-    if (!option.retryCount) {
-        option.retryCount = 0
-    }
-    if (option.contentType) {
-        xhr.setRequestHeader('Content-Type', option.contentType);
-    }
-    if (option.debug) {
-        console.log('Post', option)
-    }
-    try {
-        if (option.mode === 'json') {
-            xhr.send(JSON.stringify(option.data))
-        } else {
-            // 'urlEncode'
-            var sdata = "";
-            for (var x in option.data) {
-                sdata += encodeURIComponent(x) + "=" + encodeURIComponent(option.data[x]) + '&';
-            }
-            sdata = sdata.slice(0, sdata.length - 1)
-            if (option.debug) {
-                console.log('PostLength', sdata.length)
-            }
-            xhr.send(sdata)
-        }
-
-        return new Promise(
-            (resolve) => {
-                xhr.onreadystatechange = async () => {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            resolve(xhr.responseText)
-                        } else {
-                            console.log('XhrError=', option.retryCount, '/', xhr)
-                            if (option.retryCount < option.retry) {
-                                option.retryCount += 1
-                                resolve(await xhrPost(option))
-                            } else {
-                                resolve(null)
-                            }
-                        }
-                    }
-                }
-            }
-        )
-    } catch (e) {
-        console.log('XhrError=', e)
-        throw (e)
-    }
-
-}
 
 
 let currentDanmu
@@ -556,9 +330,6 @@ let parseNicoServerResponse = function () {
                         }
                     }
                 }
-                if (content.indexOf('03/20') !== -1) {
-                    console.log(danmu)
-                }
                 let lcommand = null
                 let danmuType = 1
                 let fontSize = 25
@@ -620,7 +391,7 @@ let parseNicoServerResponse = function () {
                     ldanmu.push(danmu)
                 }
             } catch (e) {
-                console.log(e)
+                console.log(e.stack)
             }
         }
 
@@ -877,8 +648,14 @@ let parseNicoServerResponse = function () {
                 try {
                     comment.content = JSON.parse('"' + content + '"')
                 } catch (e) {
-                    console.log(e, args)
-                    comment.content = JSON.parse('"' + content.replace(/"/g, '\\"') + '"')
+                    console.log(e, args, content)
+                    try {
+                        comment.content = JSON.parse('"' + content.replace(/"/g, '\\"') + '"')
+                    } catch (e) {
+                        console.log(e, args, '"' + content.replace(/"/g, '\\"') + '"')
+                        continue
+                    }
+
                 }
                 if (fileArg) {
                     let [no, user] = fileArg.split(',')
@@ -901,15 +678,10 @@ let parseNicoServerResponse = function () {
     }
 }();
 
-async function twitchChat(vid, startTime, cursor) {
-    let url = danmuServerDomain + '/twitchChat?video_id=' + vid
-    if (startTime) url += '&start_time=' + startTime
-    if (cursor) url += '&cursor=' + cursor
+async function twitchChat(vid, segmentIndex) {
+    let url = danmuServerDomain + '/segment/twitch?video_id=' + vid + '&segment_index=' + segmentIndex
     let xhrResponse = await xhrGet(url, null, null, 0, true)
-    cursor = xhrResponse.getResponseHeader('content-type').slice(25)
-    if (cursor.length === 0) cursor = null
-    let lTwitchChat = parseNicoServerResponse(xhrResponse.responseText)
-    return {ldanmu: lTwitchChat, cursor: cursor, startTime: startTime, vid: vid}
+    return parseNicoServerResponse(xhrResponse.responseText)
 }
 
 let danmuHookResponse = function () {
@@ -1100,10 +872,23 @@ let danmuHookResponse = function () {
             mode: 'urlEncode',
             data: {'sn': parseInt(sn)},
             headers: {'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-            url: 'https://ani.gamer.com.tw/ajax/danmuGet.php'
+            url: 'https://ani.gamer.com.tw/ajax/danmuGet.php',
+            throw403: true,
         })
         if (sdanmu == null) return []
-
+        else if (sdanmu === 403) {
+            chrome.tabs.create({url: 'https://ani.gamer.com.tw/animeVideo.php?sn=' + sn});
+            await new Promise(function (resolve) {
+                let listener = function (request) {
+                    if (request.type === 'bahaCookieSet') {
+                        chrome.runtime.onMessage.removeListener(listener)
+                        resolve()
+                    }
+                }
+                chrome.runtime.onMessage.addListener(listener)
+            })
+            return dmFengDanmaku(sn)
+        }
         let sizeDict = {
             1: 25,
             2: 36,
@@ -1116,18 +901,20 @@ let danmuHookResponse = function () {
         }
         let ldanmu = []
         let count = startIndex
+        let u200B = String.fromCharCode(0x200B)
         for (let danmu of JSON.parse(sdanmu).reverse()) {
             if (!danmu["text"]) continue
             count += 1
             ldanmu.push(
                 {
                     color: parseInt(danmu['color'].slice(1), 16),
-                    content: danmu["text"],
+                    content: u200B + danmu["text"] + u200B,
                     ctime: 10,
                     fontsize: sizeDict[danmu["size"]],
-                    id: count,
-                    idStr: count.toString(),
+                    id: danmu['sn'],
+                    idStr: danmu['sn'].toString(),
                     midHash: 'bahamute',
+                    userid: danmu['userid'],
                     mode: positionDict[danmu["position"]],
                     progress: Math.round(danmu["time"] * 100),
                     weight: 10
@@ -1147,7 +934,7 @@ let danmuHookResponse = function () {
 
                 } catch (e) {
                     console.log(danmu)
-                    console.log(e)
+                    console.log(e.stack)
                     throw e
                 }
             }
@@ -2311,9 +2098,6 @@ let danmuHookResponse = function () {
                 sdanmu = await xhrGet(url)
             }
             let ndanmu = Number(/<maxlimit>(.*?)</.exec(sdanmu)[1])
-            if (ndanmu === 8000 && duration !== null) {
-                ndanmu = parseInt((duration / 24 / 60) * 3000)
-            }
             let ldanmu
             if (Number(/<state>(.*?)</.exec(sdanmu)[1]) === 0) {
                 ldanmu = window.xml2danmu(sdanmu)
@@ -2344,9 +2128,12 @@ let danmuHookResponse = function () {
 
         async function loadProtoDanmu(url, timeout = null, header = null, retry = 0) {
             const xhr = new XMLHttpRequest();
+            xhr.withCredentials = true
             try {
                 if (timeout !== null) {
                     xhr.timeout = timeout
+                } else {
+                    xhr.timeout = 30000
                 }
 
                 xhr.open("get", url, true);
@@ -2372,7 +2159,7 @@ let danmuHookResponse = function () {
                                         })
                                         resolve(lpdanmu.elems)
                                     } catch (e) {
-                                        console.log(e)
+                                        console.log(e.stack)
                                         resolve([])
                                     }
 
@@ -2647,7 +2434,7 @@ let danmuHookResponse = function () {
                                 res = applyOffset(res, snDict.offset, snDict.startOffset)
                             }
                         } catch (e) {
-                            console.log(e)
+                            console.log(e.stack)
                         }
                     } else if (snDict['chatserver'] === 'nicovideo.jp') {
                         cid = snDict.prefix + snDict['ss']
@@ -2932,9 +2719,17 @@ let danmuHookResponse = function () {
                         }
                     }
                 }
+                if (extraInfo.twitch) {
+                    twitchChat(extraInfo.twitch, 1).then(
+                        data => callback({
+                            cid: 'twitch_' + extraInfo.twitch,
+                            ldanmu: data
+                        }, 'load_twitch_chat')
+                    )
+                }
                 return ldanmu
             } catch (e) {
-                console.log(e)
+                console.log(e.stack)
                 for (let i = 0; i < ldldanmu; i++) {
                     if (ldldanmu[i]['cid'] === cid) {
                         ldldanmu.splice(i, 1)
@@ -2953,7 +2748,11 @@ let danmuHookResponse = function () {
         function danmuObject2XML(ldanmu) {
             for (let i = 0, length = ldanmu.length; i < length; i++) {
                 let danmu = ldanmu[i]
-                ldanmu[i] = `<d p="${danmu.progress / 1000},${danmu.mode},${danmu.fontsize},${danmu.color},${danmu.ctime},${0},${danmu.midHash},${danmu.idStr}">${htmlEscape(danmu.content)}</d>`
+                let midHash = danmu.midHash
+                if (danmu.userid) {
+                    midHash = danmu.userid
+                }
+                ldanmu[i] = `<d p="${danmu.progress / 1000},${danmu.mode},${danmu.fontsize},${danmu.color},${danmu.ctime},${0},${midHash},${danmu.idStr}">${htmlEscape(danmu.content)}</d>`
             }
             return ldanmu
         }
@@ -3016,7 +2815,6 @@ let danmuHookResponse = function () {
             } else if (cid.startsWith('ss')) {
                 let zip = new JSZip();
 
-                await testServer()
                 let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + cid.slice(2)))
                 let episodeInfo = JSON.parse(await xhrGet('https://bangumi.bilibili.com/view/web_api/season?season_id=' + cid.slice(2)))
                 let i = 0
@@ -3025,8 +2823,9 @@ let danmuHookResponse = function () {
                 extensionSetting.nicoDanmuRate = 100
                 extensionSetting.reverseStartOffset = true
                 extensionSetting.notReturnProtobuf = true
+                let folder = zip.folder(cid + " " + episodeInfo.result.title)
                 for (let episode of data.result.main_section.episodes) {
-                    ldanmu = await danmuHookResponse(episode.cid, episode.aid, i, cid.slice(2))
+                    ldanmu = await danmuHookResponse(episode.cid, episode.aid, i, cid.slice(2), {duration: episode.duration / 1000})
                     let fileName
                     if (episode.index) {
                         fileName = episode.index + ' ' + episode.index_title + ' '
@@ -3039,11 +2838,12 @@ let danmuHookResponse = function () {
                         if (tldanmu.cid.startsWith('so')) {
                             extensionSetting.translateNicoComment = false
                             let rawDanmu = await nicoDanmu(tldanmu.cid, 0, 1000000)
-
-                            zip.file(fileName + ' ' + tldanmu.cid + '.raw.xml', genxml(danmuObject2XML(rawDanmu), 0, 0))
+                            folder.file(fileName + ' ' + tldanmu.cid + '.raw.xml',
+                                genxml(danmuObject2XML(rawDanmu), 0, tldanmu.cid))
                             extensionSetting.translateNicoComment = true
                         }
-                        zip.file(fileName + ' ' + tldanmu.cid + '.xml', genxml(danmuObject2XML(tldanmu.ldanmu), 0, 0))
+                        folder.file(fileName + ' ' + tldanmu.cid + '.xml',
+                            genxml(danmuObject2XML(tldanmu.ldanmu), 0, tldanmu.cid))
                     }
                     i += 1
                 }
@@ -3054,7 +2854,7 @@ let danmuHookResponse = function () {
                     }
                 })
                     .then(function (content) {
-                        downloadFile(episodeInfo.result.title + ".zip", content);
+                        downloadFile(cid + " " + episodeInfo.result.title + ".zip", content);
                     });
                 await loadConfig()
                 return
@@ -3091,31 +2891,24 @@ let danmuHookResponse = function () {
     return async function (cid, aid, ipage, ssid, extraInfo, loadDanmu, sendResponseAsync) {
         let loadDanmakuCallback
         if (loadDanmu) {
-            loadDanmakuCallback = function (ldanmu, twitch = false, raw = null) {
+            loadDanmakuCallback = function (ldanmu, type = null, raw = null) {
                 if (raw) {
                     console.log('callback', raw, cid)
                     sendResponseAsync(raw)
+                    return
                 }
                 console.log('callback', ldanmu, cid)
-                for (let dldanmu of ldldanmu) {
-                    if (dldanmu.cid === cid) {
-                        dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu)
+                if (!type) {
+                    for (let dldanmu of ldldanmu) {
+                        if (dldanmu.cid === cid) {
+                            dldanmu.ldanmu = dldanmu.ldanmu.concat(ldanmu)
+                        }
                     }
-                }
-                if (!twitch) {
                     sendResponseAsync({type: 'load_danmaku', ldanmu: ldanmu.ldanmu, cid: cid, source: ldanmu.cid})
                 } else {
-                    ldanmu['type'] = 'load_twitch_chat'
-                    ldanmu['cid'] = cid
-                    sendResponseAsync(ldanmu)
+                    sendResponseAsync({type: type, ldanmu: ldanmu.ldanmu, cid: cid, source: ldanmu.cid})
                 }
             }
-        }
-        if (loadDanmakuCallback && extraInfo.hasOwnProperty('twitch')) {
-            twitchChat(extraInfo.twitch, 0, null)
-                .then((result) => {
-                    loadDanmakuCallback(result, true)
-                })
         }
         let ldanmu = null, ndanmu = null
         for (let dldanmu of ldldanmu) {
@@ -3141,10 +2934,7 @@ let danmuHookResponse = function () {
                 'ldanmu': null,
                 'ndanmu': null
             })
-            let duration = null
-            if (aid) {
-                [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
-            }
+            let duration = extraInfo.duration
             if (!(ssid && extensionSetting.ignoreBili)) {
                 let ret = await moreFiltedHistory(cid, duration, 0)
                 ldanmu = [{'cid': cid, 'ldanmu': ret[0], 'ndanmu': ret[1]}]
@@ -3171,7 +2961,7 @@ let danmuHookResponse = function () {
                     ldanmu = ldanmu.concat(nldanmu)
                 }
             } catch (e) {
-                console.log(e)
+                console.log(e.stack)
                 serverError = true
             }
             if (extensionSetting.reverseStartOffset && extensionSetting.reverseStartOffset !== true) {
@@ -3245,7 +3035,8 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                     data: ldanmu,
                     type: request.type + '_response',
                     href: request.url,
-                    ndanmu: ndanmu
+                    ndanmu: ndanmu,
+                    cid: request.cid
                 });
             } else {
                 return sendResponseAsync({
@@ -3255,7 +3046,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                 });
             }
         } else if (request.type === 'twitch_chat') {
-            return sendResponseAsync(await twitchChat(request.vid, request.startTime, request.cursor))
+            return sendResponseAsync(await twitchChat(request.vid, request.segmentIndex))
         } else if (request.type === "bindLocalDanmu") {
             bindPath(request)
             return sendResponseAsync()
@@ -3267,7 +3058,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 
         } else if (request.type === "editSetting") {
             editConfig(request.key, request.value)
-            localStorage['setting'] = JSON.stringify(extensionSetting)
+            localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
             return sendResponseAsync('success')
         } else if (request.type === "parse") {
             if (request.url.startsWith('server::')) {
@@ -3295,12 +3086,323 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
             console.log(request)
             previewDanmaku(request.content, request.cid)
         } else {
+            if (request.type.endsWith('_response')) return
             console.log('unknown message', request)
         }
 
         return sendResponseAsync()
     }
 );
+
+//chrome
+async function testServer() {
+    danmuServerDomain = 'http://152.32.146.234:400'
+    let res = await xhrGet(danmuServerDomain + '/testConnect')
+    if (res == null) {
+        danmuServerDomain = 'https://delflare505.win:800'
+        res = await xhrGet(danmuServerDomain + '/testConnect')
+    }
+    if (res)
+        bindAid = res.split(',')
+}
+
+async function buildCrcFilter() {
+    'use strict';
+    if (extensionSetting.uidFilter === -1) {
+        return null
+    }
+    console.log('createTable')
+    let crctable = new Uint32Array(extensionSetting.uidFilter)
+    let table = [0, 1996959894, 3993919788, 2567524794, 124634137, 1886057615, 3915621685, 2657392035, 249268274,
+            2044508324, 3772115230, 2547177864, 162941995, 2125561021, 3887607047, 2428444049, 498536548, 1789927666,
+            4089016648, 2227061214, 450548861, 1843258603, 4107580753, 2211677639, 325883990, 1684777152, 4251122042,
+            2321926636, 335633487, 1661365465, 4195302755, 2366115317, 997073096, 1281953886, 3579855332, 2724688242,
+            1006888145, 1258607687, 3524101629, 2768942443, 901097722, 1119000684, 3686517206, 2898065728, 853044451,
+            1172266101, 3705015759, 2882616665, 651767980, 1373503546, 3369554304, 3218104598, 565507253, 1454621731,
+            3485111705, 3099436303, 671266974, 1594198024, 3322730930, 2970347812, 795835527, 1483230225, 3244367275,
+            3060149565, 1994146192, 31158534, 2563907772, 4023717930, 1907459465, 112637215, 2680153253, 3904427059,
+            2013776290, 251722036, 2517215374, 3775830040, 2137656763, 141376813, 2439277719, 3865271297, 1802195444,
+            476864866, 2238001368, 4066508878, 1812370925, 453092731, 2181625025, 4111451223, 1706088902, 314042704,
+            2344532202, 4240017532, 1658658271, 366619977, 2362670323, 4224994405, 1303535960, 984961486, 2747007092,
+            3569037538, 1256170817, 1037604311, 2765210733, 3554079995, 1131014506, 879679996, 2909243462, 3663771856,
+            1141124467, 855842277, 2852801631, 3708648649, 1342533948, 654459306, 3188396048, 3373015174, 1466479909,
+            544179635, 3110523913, 3462522015, 1591671054, 702138776, 2966460450, 3352799412, 1504918807, 783551873,
+            3082640443, 3233442989, 3988292384, 2596254646, 62317068, 1957810842, 3939845945, 2647816111, 81470997,
+            1943803523, 3814918930, 2489596804, 225274430, 2053790376, 3826175755, 2466906013, 167816743, 2097651377,
+            4027552580, 2265490386, 503444072, 1762050814, 4150417245, 2154129355, 426522225, 1852507879, 4275313526,
+            2312317920, 282753626, 1742555852, 4189708143, 2394877945, 397917763, 1622183637, 3604390888, 2714866558,
+            953729732, 1340076626, 3518719985, 2797360999, 1068828381, 1219638859, 3624741850, 2936675148, 906185462,
+            1090812512, 3747672003, 2825379669, 829329135, 1181335161, 3412177804, 3160834842, 628085408, 1382605366,
+            3423369109, 3138078467, 570562233, 1426400815, 3317316542, 2998733608, 733239954, 1555261956, 3268935591,
+            3050360625, 752459403, 1541320221, 2607071920, 3965973030, 1969922972, 40735498, 2617837225, 3943577151,
+            1913087877, 83908371, 2512341634, 3803740692, 2075208622, 213261112, 2463272603, 3855990285, 2094854071,
+            198958881, 2262029012, 4057260610, 1759359992, 534414190, 2176718541, 4139329115, 1873836001, 414664567,
+            2282248934, 4279200368, 1711684554, 285281116, 2405801727, 4167216745, 1634467795, 376229701, 2685067896,
+            3608007406, 1308918612, 956543938, 2808555105, 3495958263, 1231636301, 1047427035, 2932959818, 3654703836,
+            1088359270, 936918000, 2847714899, 3736837829, 1202900863, 817233897, 3183342108, 3401237130, 1404277552,
+            615818150, 3134207493, 3453421203, 1423857449, 601450431, 3009837614, 3294710456, 1567103746, 711928724,
+            3020668471, 3272380065, 1510334235, 755167117],
+        crc32 = function (
+            /* String */ str,) {
+            let crc = -1
+            for (let i = 0, iTop = str.length; i < iTop; i++) {
+                crc = (crc >>> 8) ^ table[(crc ^ str.charCodeAt(i)) & 0xFF];
+            }
+            return (crc ^ (-1)) >>> 0;
+        };
+    for (let i = 0; i < extensionSetting.uidFilter; i += 1) {
+        crctable[i] = crc32(i.toString())
+    }
+    crctable.sort()
+    console.log('tableCreated')
+    return function (hash) {
+        hash = parseInt(hash, 16)
+        let start = 0;
+        let end = crctable.length - 1;
+        let mid = Math.floor((start + end) / 2);
+        while (start <= end) {
+            if (hash > crctable[mid]) {
+                start = mid + 1;
+            } else if (hash < crctable[mid]) {
+                end = mid - 1;
+            } else {
+                return true;
+            }
+            mid = Math.floor((start + end) / 2);
+
+        }
+        return false
+    }
+}
+
+(function corsManipulate() {
+    function getHeaderIndex(headerArray, newHeader) {
+
+        for (let i = 0, len = headerArray.length; i < len; i++) {
+            let currentHeader = headerArray[i];
+            if (currentHeader.hasOwnProperty('name') && currentHeader.name === newHeader.name) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    function mergeNewHeaders(originalHeaders, newHeaders) {
+        //copy the headers for our own usage
+        let mergedHeaders = originalHeaders.slice();
+        for (let i = 0, len = newHeaders.length; i < len; i++) {
+            let index = getHeaderIndex(mergedHeaders, newHeaders[i]);
+
+            //if a matching header is defined, replace it
+            //if not, add the new header to the end
+            if (index > -1) {
+                mergedHeaders[index] = newHeaders[i];
+            } else {
+                mergedHeaders.push(newHeaders[i]);
+            }
+        }
+
+        return mergedHeaders;
+    }
+
+    function matchUrlToHeaders(url, headersPerUrl) {
+        for (let key in headersPerUrl) {
+            //this match is expecting that the user will specify URL domain
+            //so key==http://www.foo.com && url==http://www.foo.com/?x=bar&whatever=12
+            //maybe support regex in the future
+            if (url.indexOf(key) > -1) {
+                return headersPerUrl[key];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Responds to Chrome's onHeadersReceived event and injects all headers defined for the given URL
+     * @param info {Object} Contains the request info
+     * @see http://code.google.com/chrome/extensions/webRequest.html#event-onHeadersReceived
+     */
+    function onHeadersReceivedHandler(info) {
+        let desiredHeaders = matchUrlToHeaders(info.url, headersPerUrl);
+
+        if (!desiredHeaders)
+            return {};
+
+        return {responseHeaders: mergeNewHeaders(info.responseHeaders, desiredHeaders)};
+
+    }
+
+    let settings = [
+        {
+            URL: 'https://www.biliplus.com/*',
+            headers: [{name: 'Access-Control-Allow-Origin', value: 'https://www.bilibili.com'}]
+        },
+        {URL: 'http://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
+        {URL: 'https://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
+        {URL: 'https://textuploader.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
+        {URL: 'https://localhost:18090/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
+        {URL: 'https://127.0.0.1:18090/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
+
+    ]
+    let headersPerUrl = {};
+    let urlsToAlter = [];
+
+    if (settings) {
+        for (let l = settings.length, i = 0; i < l; i++) {
+            //push each URL we wish to watch for into the array
+            urlsToAlter.push(settings[i].URL);
+
+            //use the URL as a key in the dictionary to lookup the specific headers to manipulate for that URL
+            headersPerUrl[settings[i].URL.replace(/\*/g, '')] = settings[i].headers;
+        }
+    }
+
+    chrome.webRequest.onHeadersReceived.addListener(
+        onHeadersReceivedHandler,
+        // filters
+        {
+            urls: urlsToAlter
+        },
+        // extraInfoSpec
+        ["blocking", "responseHeaders"]
+    );
+
+    chrome.webRequest.onErrorOccurred.addListener(
+        function (info) {
+            console.log('ForceCORS was unable to modify headers for: ' + info.url + ' - ' + info.error)
+        },
+        {
+            urls: urlsToAlter
+        }
+    );
+
+    chrome.webRequest.handlerBehaviorChanged();
+    return true
+})();
+
+async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr = false) {
+    console.log('Get', url)
+    const xhr = new XMLHttpRequest();
+    try {
+        if (timeout !== null) {
+            xhr.timeout = timeout
+        }
+        xhr.open("get", url, true);
+        if (header !== null) {
+            for (let key in header) {
+                xhr.setRequestHeader(key, header[key])
+            }
+        }
+        xhr.send()
+
+        return new Promise(
+            (resolve) => {
+                xhr.onreadystatechange = async () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            if (returnXhr) {
+                                resolve(xhr)
+                            } else {
+                                resolve(xhr.responseText)
+                            }
+                        } else if (xhr.status === 403 && url.startsWith(danmuServerDomain)) {
+                            await new Promise((resolve) => setTimeout(resolve, 5000));
+                            console.log('waiting for retry', url)
+                            resolve(await xhrGet(url, header, retry, returnXhr))
+                        } else {
+                            console.log('XhrError=', retry, '/', xhr)
+                            if (retry < 1) {
+                                resolve(await xhrGet(url, timeout, header, retry + 1), returnXhr)
+                            } else {
+                                resolve(null)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    } catch (e) {
+        console.log('XhrError=', retry, '/', xhr, e)
+        if (danmuServerDomain === 'https://delflare505.win:800') danmuServerDomain = 'http://152.32.146.234:400'
+        if (retry < 1) {
+            return (await xhrGet(url, timeout, header, retry + 1))
+        }
+        return null
+    }
+}
+
+async function xhrPost(option) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", option.url, true);
+
+    if (!option.mode) {
+        option.mode = 'json'
+    }
+    if (option.timeout) {
+        xhr.timeout = option.timeout
+    }
+    if (option.headers) {
+        for (let key in option.headers) {
+            xhr.setRequestHeader(key, option.headers[key])
+        }
+    }
+    if (!option.retry) {
+        option.retry = 0
+    }
+    if (!option.retryCount) {
+        option.retryCount = 0
+    }
+    if (option.contentType) {
+        xhr.setRequestHeader('Content-Type', option.contentType);
+    }
+    if (option.debug) {
+        console.log('Post', option)
+    }
+    try {
+        if (option.mode === 'json') {
+            xhr.send(JSON.stringify(option.data))
+        } else {
+            // 'urlEncode'
+            var sdata = "";
+            for (var x in option.data) {
+                sdata += encodeURIComponent(x) + "=" + encodeURIComponent(option.data[x]) + '&';
+            }
+            sdata = sdata.slice(0, sdata.length - 1)
+            if (option.debug) {
+                console.log('PostLength', sdata.length)
+            }
+            xhr.send(sdata)
+        }
+
+        return new Promise(
+            (resolve) => {
+                xhr.onreadystatechange = async () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            resolve(xhr.responseText)
+                        } else {
+                            console.log('XhrError=', option.retryCount, '/', xhr)
+                            if (option.throw403) {
+                                return resolve(403)
+                            }
+                            if (option.retryCount < option.retry) {
+                                option.retryCount += 1
+                                resolve(await xhrPost(option))
+                            } else {
+                                resolve(null)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    } catch (e) {
+        console.log('XhrError=', e)
+        throw (e)
+    }
+
+}
 
 let adjustOffset = (function () {
     // async function getActiveTab() {
@@ -3373,75 +3475,29 @@ chrome.contextMenus.create({
         adjustOffset()
     }
 })
+//chrome end
 
-async function buildCrcFilter() {
-    'use strict';
-    if (extensionSetting.uidFilter === -1) {
-        return null
-    }
-    console.log('createTable')
-    let crctable = new Uint32Array(extensionSetting.uidFilter)
-    let table = [0, 1996959894, 3993919788, 2567524794, 124634137, 1886057615, 3915621685, 2657392035, 249268274,
-            2044508324, 3772115230, 2547177864, 162941995, 2125561021, 3887607047, 2428444049, 498536548, 1789927666,
-            4089016648, 2227061214, 450548861, 1843258603, 4107580753, 2211677639, 325883990, 1684777152, 4251122042,
-            2321926636, 335633487, 1661365465, 4195302755, 2366115317, 997073096, 1281953886, 3579855332, 2724688242,
-            1006888145, 1258607687, 3524101629, 2768942443, 901097722, 1119000684, 3686517206, 2898065728, 853044451,
-            1172266101, 3705015759, 2882616665, 651767980, 1373503546, 3369554304, 3218104598, 565507253, 1454621731,
-            3485111705, 3099436303, 671266974, 1594198024, 3322730930, 2970347812, 795835527, 1483230225, 3244367275,
-            3060149565, 1994146192, 31158534, 2563907772, 4023717930, 1907459465, 112637215, 2680153253, 3904427059,
-            2013776290, 251722036, 2517215374, 3775830040, 2137656763, 141376813, 2439277719, 3865271297, 1802195444,
-            476864866, 2238001368, 4066508878, 1812370925, 453092731, 2181625025, 4111451223, 1706088902, 314042704,
-            2344532202, 4240017532, 1658658271, 366619977, 2362670323, 4224994405, 1303535960, 984961486, 2747007092,
-            3569037538, 1256170817, 1037604311, 2765210733, 3554079995, 1131014506, 879679996, 2909243462, 3663771856,
-            1141124467, 855842277, 2852801631, 3708648649, 1342533948, 654459306, 3188396048, 3373015174, 1466479909,
-            544179635, 3110523913, 3462522015, 1591671054, 702138776, 2966460450, 3352799412, 1504918807, 783551873,
-            3082640443, 3233442989, 3988292384, 2596254646, 62317068, 1957810842, 3939845945, 2647816111, 81470997,
-            1943803523, 3814918930, 2489596804, 225274430, 2053790376, 3826175755, 2466906013, 167816743, 2097651377,
-            4027552580, 2265490386, 503444072, 1762050814, 4150417245, 2154129355, 426522225, 1852507879, 4275313526,
-            2312317920, 282753626, 1742555852, 4189708143, 2394877945, 397917763, 1622183637, 3604390888, 2714866558,
-            953729732, 1340076626, 3518719985, 2797360999, 1068828381, 1219638859, 3624741850, 2936675148, 906185462,
-            1090812512, 3747672003, 2825379669, 829329135, 1181335161, 3412177804, 3160834842, 628085408, 1382605366,
-            3423369109, 3138078467, 570562233, 1426400815, 3317316542, 2998733608, 733239954, 1555261956, 3268935591,
-            3050360625, 752459403, 1541320221, 2607071920, 3965973030, 1969922972, 40735498, 2617837225, 3943577151,
-            1913087877, 83908371, 2512341634, 3803740692, 2075208622, 213261112, 2463272603, 3855990285, 2094854071,
-            198958881, 2262029012, 4057260610, 1759359992, 534414190, 2176718541, 4139329115, 1873836001, 414664567,
-            2282248934, 4279200368, 1711684554, 285281116, 2405801727, 4167216745, 1634467795, 376229701, 2685067896,
-            3608007406, 1308918612, 956543938, 2808555105, 3495958263, 1231636301, 1047427035, 2932959818, 3654703836,
-            1088359270, 936918000, 2847714899, 3736837829, 1202900863, 817233897, 3183342108, 3401237130, 1404277552,
-            615818150, 3134207493, 3453421203, 1423857449, 601450431, 3009837614, 3294710456, 1567103746, 711928724,
-            3020668471, 3272380065, 1510334235, 755167117],
-        crc32 = function (
-            /* String */ str,) {
-            let crc = -1
-            for (let i = 0, iTop = str.length; i < iTop; i++) {
-                crc = (crc >>> 8) ^ table[(crc ^ str.charCodeAt(i)) & 0xFF];
-            }
-            return (crc ^ (-1)) >>> 0;
-        };
-    for (let i = 0; i < extensionSetting.uidFilter; i += 1) {
-        crctable[i] = crc32(i.toString())
-    }
-    crctable.sort()
-    console.log('tableCreated')
-    return function (hash) {
-        hash = parseInt(hash, 16)
-        let start = 0;
-        let end = crctable.length - 1;
-        let mid = Math.floor((start + end) / 2);
-        while (start <= end) {
-            if (hash > crctable[mid]) {
-                start = mid + 1;
-            } else if (hash < crctable[mid]) {
-                end = mid - 1;
-            } else {
-                return true;
-            }
-            mid = Math.floor((start + end) / 2);
-
+chrome.webRequest.onBeforeSendHeaders.addListener(function (details) {
+    var newRef = "http://localhost:18090/";
+    var gotRef = false;
+    console.log(details)
+    for (var n in details.requestHeaders) {
+        gotRef = details.requestHeaders[n].name.toLowerCase() === "referer";
+        if (gotRef) {
+            details.requestHeaders[n].value = newRef;
+            break;
         }
-        return false
     }
-}
-
-
-
+    if (!gotRef) {
+        details.requestHeaders.push({name: "Referer", value: newRef});
+    }
+    return {requestHeaders: details.requestHeaders};
+}, {
+    urls: ["http://localhost:18090/*",
+        "http://127.0.0.1:18090/*",
+    ]
+}, [
+    "requestHeaders",
+    "blocking",
+    "extraHeaders"
+]);

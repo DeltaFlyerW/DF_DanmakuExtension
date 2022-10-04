@@ -23,79 +23,19 @@
             }
             if (event.data.type && event.data.type === "pakku_ajax_response") callbacks[event.data.arg](event.data.resp);
             if (event.data.type && event.data.type === "load_danmaku" && event.origin !== 'https://message.bilibili.com') {
-                loadDanmu(event.data.ldanmu)
+                window.top.closure.loadDanmu(event.data.ldanmu)
             }
             if (event.data.type && event.data.type === "load_twitch_chat" && event.origin !== 'https://message.bilibili.com') {
-                let lTwitchDanmu = event.data.ldanmu
-
-                loadDanmu(event.data.ldanmu)
-                let startTime = event.data.startTime
-                if (!startTime) startTime = 0
-                let twitchSegment = []
-                twitchSegment.push({
-                    start: startTime,
-                    end: event.data.ldanmu[event.data.ldanmu.length - 1].progress / 1000,
-                    cursor: event.data.cursor,
-                    vid: event.data.vid
-                })
-
-                function appendTwitchChat(ldanmu) {
-                    let tldanmu = []
-                    ldanmu.forEach(function (t) {
-                        for (let danmu of lTwitchDanmu) {
-                            if (danmu.progress === t.progress && danmu.content === t.content) {
-                                return
-                            }
-                        }
-                        tldanmu.push(t)
-                    })
-                    lTwitchDanmu = lTwitchDanmu.concat(tldanmu)
-                    loadDanmu(tldanmu)
-                }
-
-                window.closure.danmakuPlayer.bind('video_progress_update', async function (e, t) {
-                    let currentTime = t.currentTime
-                    let segFound = false
-                    for (let seg of twitchSegment) {
-                        if (currentTime > seg.start && currentTime < seg.end) {
-                            segFound = true
-                            if (currentTime + 10 > seg.end) {
-                                if (!seg.cursor || seg.loading) continue
-                                seg.loading = true
-                                console.log('continue twitch seg', currentTime, seg)
-                                let result = await postExtension('twitch_chat', seg)
-                                seg.loading = false
-                                seg.end = result.ldanmu[result.ldanmu.length - 1].progress / 1000
-                                seg.cursor = result.cursor
-                                appendTwitchChat(result.ldanmu)
-                            }
-                            break
-                        }
+                window.top.closure.loadDanmu(event.data.ldanmu)
+                let twitchSegment = [1]
+                window.closure.onTimeUpdate = [async function (currentSegmentIndex) {
+                    if (!twitchSegment.includes(currentSegmentIndex)) {
+                        twitchSegment.push(currentSegmentIndex)
+                        console.log('load twitch_chat segmentIndex:', currentSegmentIndex)
+                        let ldanmu = await postExtension("twitch_chat", {segmentIndex: currentSegmentIndex})
+                        window.top.closure.loadDanmu(ldanmu)
                     }
-                    if (!segFound) {
-                        let seg = {
-                            start: currentTime,
-                            end: currentTime + 10,
-                            vid: event.data.vid,
-                            loading: true
-                        }
-                        twitchSegment.push(seg)
-                        console.log('new twitch seg', currentTime)
-                        let result = await postExtension('twitch_chat', {
-                            startTime: parseInt(currentTime),
-                            vid: event.data.vid
-                        })
-                        seg.loading = false
-                        seg.cursor = result.cursor
-                        if (result.cursor) {
-                            seg.end = result.ldanmu[result.ldanmu.length - 1].progress / 1000
-                        } else {
-                            seg.end = NaN
-                        }
-                        seg.cursor = result.cursor
-                        appendTwitchChat(result.ldanmu)
-                    }
-                })
+                }]
             }
         }
         ,
@@ -172,18 +112,19 @@
                 return buf;
             }
 
-            function send_msg_proxy(arg, callback, type = "pakku_ajax_request") {
+            async function send_msg_proxy(arg, callback, type = "pakku_ajax_request") {
                 callbacks[arg] = callback;
                 window.postMessage({
                     type: type,
                     arg: arg,
-                    loadDanmu: hasLoadDanmu()
+                    loadDanmu: await hasLoadDanmu()
                 }, "*");
             }
 
             return function (arg) {
-                if ((this.pakku_url.indexOf("list.so") !== -1
-                    || this.pakku_url.indexOf('seg.so') !== -1) && this.pakku_url.indexOf('data.bilibili.com') === -1
+                if (
+                    this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1
+                    && this.pakku_url.indexOf('data.bilibili.com') === -1
                 ) {
                     // || this.pakku_url.indexOf('web-interface/view') !== -1) {
                     // injectUI()
@@ -250,7 +191,7 @@
                         type: 'view',
                         pattern: 'view?aid='
                     }]
-                    let url=this.pakku_url
+                    let url = this.pakku_url
                     for (let cache of cacheUrlList) {
                         if (this.pakku_url.indexOf(cache.pattern) !== -1) {
                             this.pakku_addEventListener('readystatechange', function (s) {
@@ -259,7 +200,7 @@
                                         type: 'cacheUrl',
                                         url: url,
                                         urlType: cache.type,
-                                        data: s.target.responseText,
+                                        data: s.target.response,
                                     }, "*");
                                 }
                             })
@@ -293,9 +234,11 @@
         }
         if (!widgetsJsonpString) return
         let widgetsJsonp = eval('window.top.' + widgetsJsonpString)
-        window.top.closure = {
-            danmakuPlayer: null,
-            danmukuScroll: null
+        if (!window.top.closure) {
+            window.top.closure = {
+                danmakuPlayer: null,
+                danmukuScroll: null
+            }
         }
         widgetsJsonp.pakku_push = widgetsJsonp.push
         widgetsJsonp.push = function (obj) {
@@ -309,8 +252,10 @@
                             window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
 
                                 // eval('obj[1][prop]='
-                                + obj[1][prop].toString().replace('initDanmaku()', 'initDanmaku();window.top.closure.danmakuPlayer=this,console.log(this,window.top)'))
-                            loadDanmu = function (ldanmu) {
+                                + obj[1][prop].toString().replace('initDanmaku()', 'initDanmaku();window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
+                                    .replace("this.danmakuStore.allSegment[o]", "if(window.top.closure.onTimeUpdate)for(let f of window.top.closure.onTimeUpdate)f(o);this.danmakuStore.allSegment[o]")
+                            )
+                            window.top.closure.loadDanmu = function (ldanmu) {
                                 console.log('loadDanmu', ldanmu)
                                 window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
                                 window.top.closure.danmakuPlayer.dmListStore.refresh()
@@ -322,7 +267,7 @@
 
                                 // eval('obj[1][prop]='
                                 + obj[1][prop].toString().replace('this.allDM=', 'window.top.closure.danmakuPlayer=this.player,console.log(this,window.top),this.allDM='))
-                            loadDanmu = function (ldanmu) {
+                            window.top.closure.loadDanmu = function (ldanmu) {
                                 console.log('loadDanmu', ldanmu)
                                 window.top.closure.danmakuPlayer.danmaku.loadPb.appendDm(ldanmu)
                                 try {
@@ -629,10 +574,10 @@
         }
     }
 
-    let loadDanmu = null
 
-    function hasLoadDanmu() {
-        if (loadDanmu) {
+    async function hasLoadDanmu() {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (window.top.closure && window.top.closure.loadDanmu) {
             return true
         }
     }

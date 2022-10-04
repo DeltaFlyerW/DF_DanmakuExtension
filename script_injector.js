@@ -29,9 +29,36 @@ if (document.head) {
     let currentCid = null
     let cacheUrls = []
 
+    async function getBiliVideoDuration(aid, cid, ipage = undefined) {
+        let pagelist = JSON.parse(await parse('https://api.bilibili.com/x/player/pagelist?aid=' + aid + '&jsonp=jsonp'))
+        let tDuration = null
+        for (let i = 0; i < pagelist.data.length; i++) {
+            let page = pagelist.data[i]
+            if (page.cid === parseInt(cid)) {
+                tDuration = page.duration
+                if (ipage === null) {
+                    ipage = i
+                }
+            }
+        }
+        if (tDuration === null) {
+            console.log('cid', cid, 'not in', pagelist)
+        }
+        if (ipage === undefined) {
+            return tDuration
+        } else {
+            return [tDuration, ipage]
+        }
+    }
+
     async function getDescInfo(cid) {
+        console.log(lastHref, window.location.href)
         if (window.location.href === lastHref) {
             return lastDesc
+        } else {
+            if (lastHref !== null) {
+                await sleep(1000)
+            }
         }
 
         let extraInfo = {}
@@ -91,7 +118,7 @@ if (document.head) {
         // console.log(playerInfo.textContent)
 
 
-        let ssid, aid
+        let ssid, aid, duration
         let ipage = null
         if (/play\/ss(\d+)/.exec(document.querySelector('script[type="application/ld+json"]').textContent)) {
             let seasonInfo
@@ -121,6 +148,9 @@ if (document.head) {
                             aid = data.result.main_section.episodes[i].aid
                             ipage = i
                         }
+                    }
+                    if (ipage === null) {
+                        debugger
                     }
                     if (ipage === null) {
                         debugger
@@ -168,6 +198,10 @@ if (document.head) {
         }
 
 
+        if (aid) {
+            [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
+        }
+        extraInfo.duration = duration
         lastHref = window.location.href
         lastDesc = [aid, ssid, ipage, extraInfo]
         window.postMessage({type: 'descLoad', 'desc': lastDesc}, '*')
@@ -189,87 +223,87 @@ if (document.head) {
                 if (event.data.type === "pakku_ajax_request") {
                     try {
                         let cid = /oid=(\d+)/.exec(event.data.arg)[1]
-                        currentCid = cid
                         let segmentIndex = parseInt(/segment_index=(\d+)/.exec(event.data.arg)[1])
-                        if (segmentIndex === 1) {
-                            if (skipCid === cid) {
-                                console.log('Ignore cid', skipCid)
-                                window.postMessage({
-                                    type: "pakku_ajax_response",
-                                    arg: event.data.arg,
-                                    resp: null
-                                }, "*");
-                                return
-                            }
-                            let res = await getDescInfo(cid)
-                            let aid, ssid, ipage, extraInfo, expectedDanmuNum, ondanmu
-                            [aid, ssid, ipage, extraInfo] = res
-                            for (let xss of ['span[class="bilibili-player-video-info-danmaku-number"]',
-                                'span[class="bpx-player-video-info-dm-number"]',
-                                'div[class="bpx-player-video-info-dm"]',]) {
-                                ondanmu = document.querySelector(xss)
-                                if (ondanmu) {
-                                    expectedDanmuNum = Number(/\d+/.exec(ondanmu.textContent)[0])
-                                    break
-                                }
-                            }
-                            let message = {
-                                type: "ajax_hook",
-                                url: event.data.arg,
-                                aid: aid,
-                                cid: cid,
-                                href: window.location.href,
-                                extraInfo: extraInfo,
-                                ssid: ssid,
-                                ipage: ipage,
-                                expectedDanmuNum: expectedDanmuNum,
-                                loadDanmu: event.data.loadDanmu
-                            }
-                            try {
-                                message['block'] = JSON.parse(localStorage.bilibili_player_settings).block
-                            } catch (e) {
-                                console.log(e)
-                            }
-                            chrome.runtime.sendMessage(message);
-
-                            await new Promise(resolve => {
-                                function handle(resp, sender, sendResponse) {
-                                    if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55))
-                                        return;
-                                    chrome.runtime.onMessage.removeListener(handle)
-                                    if (resp.data !== null && resp.ndanmu !== null) {
-                                        console.log('GotDanmuFromDFex', resp.ndanmu)
-                                        if (skipCid !== cid) {
-                                            if (ondanmu) {
-                                                ondanmu.textContent = ondanmu.textContent.replace(/\d+/, resp.ndanmu)
-                                            }
-                                        }
-                                        if (setting.debug) {
-                                            let danmuSwitch = document.querySelector('div[class="bilibili-player-video-danmaku-switch bui bui-switch"]')
-                                            console.log('danmuSwitch', danmuSwitch)
-                                            if (danmuSwitch) {
-                                                danmuSwitch.style.visibility = "hidden";
-                                            }
-                                        }
-                                    }
-                                    window.postMessage({
-                                        type: "pakku_ajax_response",
-                                        arg: event.data.arg,
-                                        resp: resp
-                                    }, "*");
-                                    resolve()
-                                }
-
-                                chrome.runtime.onMessage.addListener(handle)
-
-                            })
-                        } else {
+                        if (segmentIndex !== 1) {
                             window.postMessage({
                                 type: "pakku_ajax_response",
                                 arg: event.data.arg,
                                 resp: {data: new Uint8Array()}
                             }, "*");
+                            return
                         }
+                        currentCid = cid
+                        if (skipCid === cid) {
+                            console.log('Ignore cid', skipCid)
+                            window.postMessage({
+                                type: "pakku_ajax_response",
+                                arg: event.data.arg,
+                                resp: null
+                            }, "*");
+                            return
+                        }
+                        let res = await getDescInfo(cid)
+                        let aid, ssid, ipage, extraInfo, expectedDanmuNum, ondanmu
+                        [aid, ssid, ipage, extraInfo] = res
+                        for (let xss of ['span[class="bilibili-player-video-info-danmaku-number"]',
+                            'span[class="bpx-player-video-info-dm-number"]',
+                            'div[class="bpx-player-video-info-dm"]',]) {
+                            ondanmu = document.querySelector(xss)
+                            if (ondanmu) {
+                                expectedDanmuNum = Number(/\d+/.exec(ondanmu.textContent)[0])
+                                break
+                            }
+                        }
+                        let message = {
+                            type: "ajax_hook",
+                            url: event.data.arg,
+                            aid: aid,
+                            cid: cid,
+                            href: window.location.href,
+                            extraInfo: extraInfo,
+                            ssid: ssid,
+                            ipage: ipage,
+                            expectedDanmuNum: expectedDanmuNum,
+                            loadDanmu: event.data.loadDanmu
+                        }
+                        try {
+                            message['block'] = JSON.parse(localStorage.bilibili_player_settings).block
+                        } catch (e) {
+                            console.log(e)
+                        }
+                        chrome.runtime.sendMessage(message);
+
+                        await new Promise(resolve => {
+                            function handle(resp, sender, sendResponse) {
+                                if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55) || resp.cid !== currentCid)
+                                    return;
+                                chrome.runtime.onMessage.removeListener(handle)
+                                if (resp.data !== null && resp.ndanmu !== null) {
+                                    console.log('GotDanmuFromDFex', resp.ndanmu)
+                                    if (skipCid !== cid) {
+                                        if (ondanmu) {
+                                            ondanmu.textContent = ondanmu.textContent.replace(/\d+/, resp.ndanmu)
+                                        }
+                                    }
+                                    if (setting.debug) {
+                                        let danmuSwitch = document.querySelector('div[class="bilibili-player-video-danmaku-switch bui bui-switch"]')
+                                        console.log('danmuSwitch', danmuSwitch)
+                                        if (danmuSwitch) {
+                                            danmuSwitch.style.visibility = "hidden";
+                                        }
+                                    }
+                                }
+                                window.postMessage({
+                                    type: "pakku_ajax_response",
+                                    arg: event.data.arg,
+                                    resp: resp
+                                }, "*");
+                                resolve()
+                            }
+
+                            chrome.runtime.onMessage.addListener(handle)
+
+                        })
 
                     } catch (e) {
                         console.log(e)
@@ -278,6 +312,7 @@ if (document.head) {
                             arg: event.data.arg,
                             resp: null
                         }, "*");
+                        throw e
                     }
 
 
@@ -296,9 +331,14 @@ if (document.head) {
                         }
                     }
                 }
-                if (event.data.source === 'DFex') {
+                if (event.data.source === 'DFex' && !event.data.type.endsWith('_response')) {
                     if (event.data.type === 'previewDanmaku') {
                         event.data.cid = lastDesc.cid
+                    } else if (event.data.type === "twitch_chat") {
+                        if (!lastDesc[3].twitch) {
+                            return
+                        }
+                        event.data.vid = lastDesc.extraInfo.twitch
                     }
                     chrome.runtime.sendMessage(event.data);
                     let timeStamp = event.data.timeStamp
@@ -389,12 +429,12 @@ if (document.head) {
 
 
     console.log('inject xhrhook')
+
+    //chrome
     let script = document.createElement("script");
     script.src = chrome.runtime.getURL("xhr_hook.js");
-
-
     document.head.appendChild(script);
-
+    //chrome end
 }
 
 

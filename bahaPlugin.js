@@ -34,6 +34,9 @@ function getdate(date) {
 
 async function main() {
     console.log('bahaPlugin running!')
+    if (document.title !== '巴哈姆特電玩資訊站 - 系統異常回報') {
+        postExtension('bahaCookieSet', {})
+    }
     let elem = document.querySelector("#BH_background > div.container-player > section.player > div.subtitle > div.sub_top.ani-tabs")
     if (elem) {
 
@@ -55,8 +58,8 @@ async function main() {
 
     if (season) {
         let title = document.querySelector("head > title")
-        if (/ \[\d+]/.exec(title.text)) {
-            title = title.text.slice(0, /\[\d+]/.exec(title.text).index)
+        if (/ \[.*?] /.exec(title.text)) {
+            title = title.text.slice(0, / \[.*?] /.exec(title.text).index)
         }
         title = title.replace('/', ' ')
 
