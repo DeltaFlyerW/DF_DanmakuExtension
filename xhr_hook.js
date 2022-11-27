@@ -746,7 +746,10 @@
                         let ret = await parse(
                             url, true
                         )
-                        ret[0].forEach(it => root.replyList.push(it))
+                        ret[0].forEach(it => {
+                            it.rpid = root.replyList.length
+                            root.replyList.push(it)
+                        })
                         root.continuationEndpoint = ret[1]
                     }
                     return buildSublist(root.replyList.slice(page * pageSize - pageSize, page * pageSize), pageInfo)
@@ -994,6 +997,8 @@
                 for (let comment of commentList) {
                     let reply = commentTemplate
                     reply = JSON.parse(JSON.stringify(reply))
+                    reply.rpid = comment.rpid
+                    reply.rpid_str = reply.rpid.toString()
                     reply.content.message = comment['text']
                     reply.reply_control.time_desc = comment.time
                     reply.member.uname = comment.author
@@ -1004,7 +1009,48 @@
                 return JSON.stringify(response)
             }
 
+            let createMutationObserver = function () {
+                let targetNode = document.querySelector("[class='reply-list']")
+
+                // Options for the observer (which mutations to observe)
+                const config = {childList: true, subtree: true};
+
+                // Callback function to execute when mutations are observed
+                const callback = (mutationList, observer) => {
+                    for (const mutation of mutationList) {
+                        let replyItem = mutation.addedNodes[0]
+                        if (mutation.type === 'childList' && replyItem) {
+                            if (replyItem.className === "reply-item") {
+                                let rpid = replyItem.querySelector('[class="root-reply-avatar"]').getAttribute("data-root-reply-id")
+                                if (rpid < youtubeManager.commentList.length) {
+                                    replyItem.querySelector('[class="reply-time"]').textContent = youtubeManager.commentList[rpid].time
+                                    replyItem.querySelector('[class$="user-info"]').removeChild(replyItem.querySelector('[class$="user-level"]'))
+                                    replyItem.querySelector('[class$="reply-info"]').removeChild(replyItem.querySelector('[class$="reply-dislike"]'))
+                                    replyItem.querySelector('[class$="reply-info"]').removeChild(replyItem.querySelector('[class$="reply-btn"]'))
+                                }
+                            } else if (replyItem.className === "sub-reply-item") {
+                                let rpid = replyItem.parentElement.parentElement.parentElement.querySelector('[class="root-reply-avatar"]').getAttribute("data-root-reply-id")
+                                if (rpid < youtubeManager.commentList.length) {
+                                    let subId = replyItem.querySelector('[class="sub-reply-avatar"]').getAttribute("data-root-reply-id")
+                                    replyItem.querySelector('[class="sub-reply-time"]').textContent = youtubeManager.commentList[rpid].replyList[subId].time
+                                    replyItem.querySelector('[class$="sub-user-info"]').removeChild(replyItem.querySelector('[class$="sub-user-level"]'))
+                                    replyItem.querySelector('[class$="sub-reply-info"]').removeChild(replyItem.querySelector('[class$="sub-reply-dislike"]'))
+                                    replyItem.querySelector('[class$="sub-reply-info"]').removeChild(replyItem.querySelector('[class$="sub-reply-btn"]'))
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // Create an observer instance linked to the callback function
+                const observer = new MutationObserver(callback);
+
+                // Start observing the target node for configured mutations
+                observer.observe(targetNode, config);
+            }
+
             youtubeManager.loadComment = loadYoutubeComment
+            createMutationObserver()
             let youtubeId = lastDesc[3].youtube
             if (youtubeManager.created === false) {
                 youtubeManager.youtubeId = youtubeId
