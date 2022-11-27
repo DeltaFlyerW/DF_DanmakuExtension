@@ -8,6 +8,9 @@
             if (event.source !== window || !event.data || !event.data.type) return;
             // console.log(event.data)
             if (event.data.type === 'replaceLoadPage') {
+                console.log('replaceLoadPage')
+                let loadPage = buildLoadPage(event.data.lastDesc)
+                if (!loadPage) return;
                 if (window.bbComment.prototype.originLoadPage) {
                     return;
                 }
@@ -170,19 +173,62 @@
                             that.readyState = 4;
                             that.status = 200;
                             that.statusText = "Pakku OK";
+                            that.responseURL = that.pakku_url
                             console.log("pakku ajax: got tampered response for", that.pakku_url);
                             that.abort();
-                            if (that.pakku_load_callback) {
+                            that.pakku_load_callback = that.pakku_load_callback || [];
+                            if (that.onreadystatechange)
+                                that.pakku_load_callback.push(that.onreadystatechange);
+                            if (that.onload)
+                                that.pakku_load_callback.push(that.onload);
+                            if (that.pakku_load_callback.length > 0) {
                                 for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
-                            }
-                            if (that.onreadystatechange) {
-                                that.onreadystatechange()
                             }
                         });
                     } else {
                         console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
                         return that.pakku_send(arg);
                     }
+                } else if (youtubeManager.showed && this.pakku_url.indexOf("x/v2/reply") !== -1) {
+                    youtubeManager.loadComment(this.pakku_url).then((response) => {
+                        this.abort();
+                        Object.defineProperty(this, "response", {
+                            writable: true
+                        });
+                        Object.defineProperty(this, "responseText", {
+                            writable: true
+                        });
+                        Object.defineProperty(this, "readyState", {
+                            writable: true
+                        });
+                        Object.defineProperty(this, "status", {
+                            writable: true
+                        });
+                        Object.defineProperty(this, "statusText", {
+                            writable: true
+                        });
+                        Object.defineProperty(this, "responseURL", {
+                            writable: true
+                        });
+
+                        this.response = this.responseText = response;
+                        // console.log(resp.data)
+                        this.readyState = 4;
+                        this.status = 200;
+                        this.statusText = "Pakku OK";
+                        this.responseURL = this.pakku_url
+                        console.log("pakku ajax: got tampered response for", this.pakku_url);
+                        this.pakku_load_callback = this.pakku_load_callback || [];
+                        if (this.onreadystatechange)
+                            this.pakku_load_callback.push(this.onreadystatechange);
+                        if (this.onload)
+                            this.pakku_load_callback.push(this.onload);
+                        if (this.pakku_load_callback.length > 0) {
+                            for (let i = 0; i < this.pakku_load_callback.length; i++) this.pakku_load_callback[i].bind(this)();
+                        }
+                    }).catch(() => {
+                        return this.pakku_send(arg)
+                    })
                 } else {
                     let cacheUrlList = [{
                         type: 'season',
@@ -302,10 +348,12 @@
         ytcfg: null,
         showed: false,
         lastHref: window.location.href,
-        commentList: []
+        loadComment: null,
+        commentList: [],
+        init: true
     }
 
-    function buildLoadPage(lastDesc,) {
+    let buildLoadPage = function (lastDesc) {
         async function sleep(seconds) {
             await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
         }
@@ -323,18 +371,6 @@
             }
         }
 
-        if (youtubeManager.lastHref !== window.location.href) {
-            youtubeManager = {
-                youtubeId: null,
-                created: false,
-                isEnd: false,
-                endpoint: null,
-                ytcfg: null,
-                showed: false,
-                lastHref: window.location.href,
-                commentList: []
-            }
-        }
 
         let createElement = function (sHtml) {
             // 创建一个可复用的包装元素
@@ -404,174 +440,584 @@
             return result
         }
 
-        function createReply(iComment, comment) {
-            let lPos = comment.text.match(/\d+[:：]\d+[:：]*\d*/g)
-            if (lPos !== null) {
-                for (let i = 0; i < lPos.length; i++) {
-                    let pos = lPos[i]
-                    pos = pos.replace('：', ':')
-                    pos = pos.split(':')
-                    if (pos.length === 2) {
-                        pos = parseInt(pos[0]) * 60 + parseInt(pos[1])
-                        comment.text = comment.text.replace(lPos[i], '<a class="video-seek" data-p="-1" data-time="' + pos + '">' + lPos[i] + '</a>')
-                    }
-                    if (pos.length === 3) {
-                        pos = parseInt(pos[0]) * 3600 + parseInt(pos[1]) * 60 + parseInt(pos[2])
-                        comment.text = comment.text.replace(lPos[i], '<a class="video-seek" data-p="-1" data-time="' + pos + '">' + lPos[i] + '</a>')
-                    }
+        function copyStyle(src, dst) {
+            dst.style.cssText = document.defaultView.getComputedStyle(src, "").cssText;
+        }
+
+        function buildLoadPageV1(lastDesc,) {
+            if (youtubeManager.lastHref !== window.location.href) {
+                youtubeManager = {
+                    youtubeId: null,
+                    created: false,
+                    isEnd: false,
+                    endpoint: null,
+                    ytcfg: null,
+                    showed: false,
+                    lastHref: window.location.href,
+                    commentList: []
                 }
             }
 
-            let shtml = format('<div class="list-item reply-wrap " data-id="0" data-index="' + iComment + '">\n' +
-                '    <div class="user-face">\n' +
-                '        <a href="https://www.youtube.com/channel/{channel}" target="_blank" data-usercard-mid="{channel}">\n' +
-                '            <div class="bili-avatar">\n' +
-                '                <img width="48" height="48" class="bili-avatar-img bili-avatar-face bili-avatar-img-radius"\n' +
-                '                     src="{photo}"\n' +
-                '                     alt="">\n' +
-                '\n' +
-                '\n' +
-                '                <span class="bili-avatar-icon"></span>\n' +
-                '            </div>\n' +
-                '        </a>\n' +
-                '    </div>\n' +
-                '    <div class="con ">\n' +
-                '        <div class="user">\n' +
-                '            <a data-usercard-mid="{channel}" href="https://www.youtube.com/channel/{channel}"\n' +
-                '               target="_blank" class="name"\n' +
-                '               style="color">{author}\n' +
-                '            </a>\n' +
-                '\n' +
-                '        </div>\n' +
-                '        <p class="text">{text}</p>\n' +
-                '        <div class="info">\n' +
-                '            <span class="time">{time}</span>\n' +
-                '            <span class="like ">\n' +
-                '                <i></i>\n' +
-                '                <span>{votes}</span>\n' +
-                '            </span>\n' +
-                '        </div>\n' +
-                '        <div class="reply-box"></div>\n' +
-                '        <div class="paging-box"></div>\n' +
-                '    </div>\n' +
-                '</div>', comment)
+            function createReply(iComment, comment) {
+                let lPos = comment.text.match(/\d+[:：]\d+[:：]*\d*/g)
+                if (lPos !== null) {
+                    for (let i = 0; i < lPos.length; i++) {
+                        let pos = lPos[i]
+                        pos = pos.replace('：', ':')
+                        pos = pos.split(':')
+                        if (pos.length === 2) {
+                            pos = parseInt(pos[0]) * 60 + parseInt(pos[1])
+                            comment.text = comment.text.replace(lPos[i], '<a class="video-seek" data-p="-1" data-time="' + pos + '">' + lPos[i] + '</a>')
+                        }
+                        if (pos.length === 3) {
+                            pos = parseInt(pos[0]) * 3600 + parseInt(pos[1]) * 60 + parseInt(pos[2])
+                            comment.text = comment.text.replace(lPos[i], '<a class="video-seek" data-p="-1" data-time="' + pos + '">' + lPos[i] + '</a>')
+                        }
+                    }
+                }
 
-            return createElement(shtml)
+                let shtml = format('<div class="list-item reply-wrap " data-id="0" data-index="' + iComment + '">\n' +
+                    '    <div class="user-face">\n' +
+                    '        <a href="https://www.youtube.com/channel/{channel}" target="_blank" data-usercard-mid="{channel}">\n' +
+                    '            <div class="bili-avatar">\n' +
+                    '                <img width="48" height="48" class="bili-avatar-img bili-avatar-face bili-avatar-img-radius"\n' +
+                    '                     src="{photo}"\n' +
+                    '                     alt="">\n' +
+                    '\n' +
+                    '\n' +
+                    '                <span class="bili-avatar-icon"></span>\n' +
+                    '            </div>\n' +
+                    '        </a>\n' +
+                    '    </div>\n' +
+                    '    <div class="con ">\n' +
+                    '        <div class="user">\n' +
+                    '            <a data-usercard-mid="{channel}" href="https://www.youtube.com/channel/{channel}"\n' +
+                    '               target="_blank" class="name"\n' +
+                    '               style="color">{author}\n' +
+                    '            </a>\n' +
+                    '\n' +
+                    '        </div>\n' +
+                    '        <p class="text">{text}</p>\n' +
+                    '        <div class="info">\n' +
+                    '            <span class="time">{time}</span>\n' +
+                    '            <span class="like ">\n' +
+                    '                <i></i>\n' +
+                    '                <span>{votes}</span>\n' +
+                    '            </span>\n' +
+                    '        </div>\n' +
+                    '        <div class="reply-box"></div>\n' +
+                    '        <div class="paging-box"></div>\n' +
+                    '    </div>\n' +
+                    '</div>', comment)
+
+                return createElement(shtml)
+            }
+
+            async function renderPage() {
+                if (youtubeManager.isEnd) {
+                    return true
+                }
+                let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
+                if (youtubeManager.endpoint) {
+                    url += '&context=' + encodeURIComponent(JSON.stringify([youtubeManager.endpoint, youtubeManager.ytcfg]))
+                }
+                let ret = await parse(
+                    url, true
+                )
+                console.log(ret)
+                let dComment = ret[0]
+                youtubeManager.endpoint = ret[1]
+                if (ret[2]) youtubeManager.ytcfg = ret[2]
+                let commentList = document.querySelector("#comment > div > div.comment > div > div.comment-list")
+
+                for (let i = 0; i < dComment.length; i++) {
+                    let comment = dComment[i]
+                    let commentElement = createReply(i, comment)
+                    if (comment.hasOwnProperty('comment')) {
+                        let replyButton = createElement('<div  class="view-more" ">共<b>' + comment.comment + '</b>条回复, <a class="btn-more" data-pid="0" data-fold="false">点击查看</a></div>')
+                        replyButton.continuationEndpoint = comment.continuationEndpoint
+                        commentElement.querySelector('div[class="reply-box"]').appendChild(replyButton)
+                        replyButton.addEventListener('click', async (e) => {
+                            if (replyButton.querySelector('a[class="btn-more"]').textContent !== '加载中...' && replyButton.style.display !== 'none') {
+                                replyButton.querySelector('a[class="btn-more"]').textContent = '加载中...'
+                            } else {
+                                return
+                            }
+                            let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
+                            url += '&context=' + encodeURIComponent(JSON.stringify([replyButton.continuationEndpoint, youtubeManager.ytcfg]))
+                            ret = await parse(
+                                url, true
+                            )
+                            let dComment = ret[0]
+
+                            for (let j = 0; j < dComment.length; j++) {
+                                let commentElement = createReply(j, dComment[j]);
+                                replyButton.parentElement.insertBefore(commentElement, replyButton)
+                            }
+                            replyButton.querySelector('b').textContent = (parseInt(replyButton.querySelector('b').textContent) - dComment.length).toString()
+                            if (ret[1]) {
+                                replyButton.childNodes[0].data = '更多'
+                                replyButton.continuationEndpoint = ret[1]
+                                replyButton.querySelector('a[class="btn-more"]').textContent = '点击加载'
+                            } else {
+                                replyButton.style.display = 'none'
+                            }
+                        })
+                    }
+                    commentList.appendChild(commentElement)
+                    youtubeManager.commentList.push(commentElement)
+                }
+                if (ret[1] == null) {
+                    youtubeManager.isEnd = true
+                }
+                return ret[1] == null;
+            }
+
+            function renderYoutubeButton() {
+                youtubeManager.created = true
+                console.log('加载油管评论', youtubeManager.youtubeId)
+                let commentTitle = document.querySelector("#comment > div > div.comment > div > div.comment-header.clearfix > div.tabs-order > ul")
+                let youtubeListItem = createElement('<li class="youtube-comment" style="display: list-item;">油管评论</li>')
+                commentTitle.appendChild(youtubeListItem)
+            }
+
+            let youtubeId = lastDesc[3].youtube
+            if (youtubeManager.created === false) {
+                youtubeManager.youtubeId = youtubeId
+                renderYoutubeButton()
+            }
+            return function (i, e) {
+
+                if (!document.querySelector('li[class="youtube-comment on"]')) {
+                    youtubeManager.showed = false
+                    return true
+                }
+                let o = this;
+
+                if (youtubeManager.showed !== true) {
+                    let commentList = document.querySelector("#comment > div > div.comment > div > div.comment-list")
+                    for (let i = commentList.childNodes.length - 1; i >= 0; i--) {
+                        commentList.removeChild(commentList.childNodes[i]);
+                    }
+                    for (let i = 0; i < youtubeManager.commentList.length; i++) {
+                        commentList.appendChild(youtubeManager.commentList[i])
+                    }
+                    youtubeManager.showed = true
+                } else {
+                    if (o.loading
+                    ) return;
+                }
+
+                ``
+                o.loading = !0
+                let loadingState = document.querySelector("#comment > div > div.comment > div > div.loading-state")
+                loadingState.innerHTML = '正在加载中...'
+
+                renderPage()
+                    .then(function (e) {
+                        e ? loadingState.innerHTML = "没有更多评论" : loadingState.innerHTML = ""
+                    })
+                    .catch(function (e) {
+                        console.log(e)
+                        o.loaded || o._showLoading('<span>加载失败，<a class="reload-comment">点击重试</a></span>')
+                    })
+                    .finally(function () {
+                        o.loading = !1
+                    })
+            }
         }
 
-        async function renderPage() {
-            if (youtubeManager.isEnd) {
-                return true
-            }
-            let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
-            if (youtubeManager.endpoint) {
-                url += '&context=' + encodeURIComponent(JSON.stringify([youtubeManager.endpoint, youtubeManager.ytcfg]))
-            }
-            let ret = await parse(
-                url, true
-            )
-            console.log(ret)
-            let dComment = ret[0]
-            youtubeManager.endpoint = ret[1]
-            if (ret[2]) youtubeManager.ytcfg = ret[2]
-            youtubeManager.session_token = ret['session_token']
-            let commentList = document.querySelector("#comment > div > div.comment > div > div.comment-list")
+        function buildLoadPageV2(lastDesc) {
+            if (youtubeManager.lastHref !== window.location.href) {
+                youtubeManager = {
+                    youtubeId: null,
+                    created: false,
+                    isEnd: false,
+                    context: null,
+                    ytcfg: null,
+                    showed: false,
+                    lastHref: window.location.href,
+                    loadComment: null,
+                    commentList: [],
+                    init: true
 
-            for (let i = 0; i < dComment.length; i++) {
-                let comment = dComment[i]
-                let commentElement = createReply(i, comment)
-                if (comment.hasOwnProperty('comment')) {
-                    let replyButton = createElement('<div  class="view-more" ">共<b>' + comment.comment + '</b>条回复, <a class="btn-more" data-pid="0" data-fold="false">点击查看</a></div>')
-                    replyButton.continuationEndpoint = comment.continuationEndpoint
-                    commentElement.querySelector('div[class="reply-box"]').appendChild(replyButton)
-                    replyButton.addEventListener('click', async (e) => {
-                        if (replyButton.querySelector('a[class="btn-more"]').textContent !== '加载中...' && replyButton.style.display !== 'none') {
-                            replyButton.querySelector('a[class="btn-more"]').textContent = '加载中...'
-                        } else {
-                            return
+                }
+            }
+
+            async function renderYoutubeButton() {
+                youtubeManager.created = true
+                console.log('加载油管评论', youtubeManager.youtubeId)
+                let commentTitle = document.querySelector('[class^="nav-sort"]')
+                for (let child of commentTitle.children) {
+                    if (child.className.indexOf("sort") !== -1) {
+                        child.addEventListener("click", function (event) {
+                            if (!event.isTrusted) {
+                                event.target.hiddenActive = true
+                                return
+                            }
+                            youtubeManager.init = true
+                            youtubeManager.showed = false
+                            for (let child1 of commentTitle.children) {
+                                if (child1.className !== event.target.className) {
+                                    if (event.target.hiddenActive && child1.className.indexOf("sort") !== -1) {
+                                        child1.click()
+                                        event.target.hiddenActive = false
+                                        event.target.click()
+                                    }
+                                    child1.style.color = "#9499a0"
+                                } else {
+                                    child1.style.color = "#18191c"
+                                }
+                            }
+                        })
+                    }
+                }
+                let existPartSymbol = commentTitle.querySelector('[class="part-symbol"]')
+                while (existPartSymbol === null) {
+                    await new Promise(resolve => setTimeout(resolve, 100))
+                    existPartSymbol = commentTitle.querySelector('[class="part-symbol"]')
+                }
+                let partSymbol = createElement(existPartSymbol.outerHTML);
+                partSymbol.style.color = "#18191c"
+
+                let youtubeListItem = createElement('<div class="youtube-comment">油管评论</div>')
+                youtubeListItem.style.cursor = "pointer";
+                youtubeListItem.addEventListener("click", function (event) {
+                    console.log(event)
+                    youtubeManager.showed = true
+                    youtubeListItem.style.color = "#18191c"
+
+                    let sort = commentTitle.className.split(' ')[1]
+                    for (let child of commentTitle.children) {
+                        if (child.className.indexOf(sort) === -1 && child.className.indexOf(sort) === -1) {
+                            child.click()
                         }
+                        child.style.color = "#9499a0"
+                    }
+                })
+                commentTitle.appendChild(partSymbol)
+                commentTitle.appendChild(youtubeListItem)
+            }
+
+            async function loadYoutubeComment(url) {
+                if (url.indexOf('main') !== -1) {
+                    if (youtubeManager.init) {
+                        youtubeManager.init = false
+                        if (youtubeManager.commentList.length !== 0) {
+                            return buildMainContent(youtubeManager.commentList, youtubeManager.isEnd)
+                        }
+                    } else if (youtubeManager.isEnd) {
+                        return buildMainContent(null)
+                    }
+                    let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
+                    if (youtubeManager.endpoint) {
+                        url += '&context=' + encodeURIComponent(JSON.stringify([youtubeManager.endpoint, youtubeManager.ytcfg]))
+                    }
+                    let ret = await parse(
+                        url, true
+                    )
+                    console.log(ret)
+                    youtubeManager.endpoint = ret[1]
+                    if (ret[2]) youtubeManager.ytcfg = ret[2]
+                    if (ret[1] == null) {
+                        youtubeManager.isEnd = true
+                    }
+                    for (let comment of ret[0]) {
+                        comment.rpid = youtubeManager.commentList.length
+                        if (comment.comment) {
+                            comment.replyList = []
+                        }
+                        youtubeManager.commentList.push(comment)
+                    }
+                    return buildMainContent(ret[0])
+                } else if (url.indexOf("reply?csrf") !== -1) {
+                    let page = Number(/pn=(\d+)/.exec(url)[1])
+                    let pageSize = Number(/ps=(\d+)/.exec(url)[1])
+                    let rootIndex = Number(/root=(\d+)/.exec(url)[1])
+                    let root = youtubeManager.commentList[rootIndex]
+                    let pageInfo = {
+                        "count": root.comment,
+                        "size": pageSize,
+                        "num": Math.ceil(root.count / pageSize)
+                    }
+                    while (root.replyList.length < page * pageSize && root.continuationEndpoint !== null) {
                         let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
-                        url += '&context=' + encodeURIComponent(JSON.stringify([replyButton.continuationEndpoint, youtubeManager.ytcfg]))
-                        ret = await parse(
+                        url += '&context=' + encodeURIComponent(JSON.stringify([root.continuationEndpoint, youtubeManager.ytcfg]))
+                        let ret = await parse(
                             url, true
                         )
-                        let dComment = ret[0]
+                        ret[0].forEach(it => root.replyList.push(it))
+                        root.continuationEndpoint = ret[1]
+                    }
+                    return buildSublist(root.replyList.slice(page * pageSize - pageSize, page * pageSize), pageInfo)
 
-                        for (let j = 0; j < dComment.length; j++) {
-                            let commentElement = createReply(j, dComment[j]);
-                            replyButton.parentElement.insertBefore(commentElement, replyButton)
-                        }
-                        replyButton.querySelector('b').textContent = (parseInt(replyButton.querySelector('b').textContent) - dComment.length).toString()
-                        if (ret[1]) {
-                            replyButton.childNodes[0].data = '更多'
-                            replyButton.continuationEndpoint = ret[1]
-                            replyButton.querySelector('a[class="btn-more"]').textContent = '点击加载'
-                        } else {
-                            replyButton.style.display = 'none'
-                        }
-                    })
+                } else
+                    throw "unknownType"
+            }
+
+            function buildMainContent(commentList, isEnd) {
+                let response = {
+                    "code": 0,
+                    "message": "0",
+                    "ttl": 1,
+                    "data": {
+                        "cursor": {
+                            "is_begin": false,
+                            "prev": 0,
+                            "next": 1,
+                            "is_end": true,
+                            "all_count": 0,
+                            "mode": 2,
+                            "support_mode": [2, 3],
+                            "name": "最新评论"
+                        },
+                        "replies": [],
+                        "top": {"admin": null, "upper": null, "vote": null},
+                        "top_replies": null,
+                        "up_selection": {"pending_count": 0, "ignore_count": 0},
+                        "effects": {"preloading": ""},
+                        "assist": 0,
+                        "blacklist": 0,
+                        "vote": 0,
+                        "config": {"showtopic": 1, "show_up_flag": true, "read_only": false},
+                        "upper": {"mid": 23436313},
+                        "control": {
+                            "input_disable": false,
+                            "root_input_text": "发一条友善的评论",
+                            "child_input_text": "",
+                            "giveup_input_text": "不发没关系，请继续友善哦~",
+                            "answer_guide_text": "需要升级成为lv2会员后才可以评论，先去答题转正吧！",
+                            "answer_guide_icon_url": "http://i0.hdslb.com/bfs/emote/96940d16602cacbbac796245b7bb99fa9b5c970c.png",
+                            "answer_guide_ios_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1&re_src=12",
+                            "answer_guide_android_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1&re_src=6",
+                            "bg_text": "",
+                            "show_type": 1,
+                            "show_text": "",
+                            "web_selection": false,
+                            "disable_jump_emote": false
+                        },
+                        "note": 1,
+                        "callbacks": {}
+                    }
                 }
-                commentList.appendChild(commentElement)
-                youtubeManager.commentList.push(commentElement)
-            }
-            if (ret[1] == null) {
-                youtubeManager.isEnd = true
-            }
-            return ret[1] == null;
-        }
-
-        function renderYoutubeButton() {
-            youtubeManager.created = true
-            console.log('加载油管评论', youtubeManager.youtubeId)
-            let commentTitle = document.querySelector("#comment > div > div.comment > div > div.comment-header.clearfix > div.tabs-order > ul")
-            let youtubeListItem = createElement('<li class="youtube-comment" style="display: list-item;">油管评论</li>')
-            commentTitle.appendChild(youtubeListItem)
-        }
-
-        let youtubeId = lastDesc[3].youtube
-        if (youtubeManager.created === false) {
-            youtubeManager.youtubeId = youtubeId
-            renderYoutubeButton()
-        }
-        return function (i, e) {
-
-            if (!document.querySelector('li[class="youtube-comment on"]')) {
-                youtubeManager.showed = false
-                return true
-            }
-            let o = this;
-
-            if (youtubeManager.showed !== true) {
-                let commentList = document.querySelector("#comment > div > div.comment > div > div.comment-list")
-                for (let i = commentList.childNodes.length - 1; i >= 0; i--) {
-                    commentList.removeChild(commentList.childNodes[i]);
+                if (commentList === null) {
+                    return response
                 }
-                for (let i = 0; i < youtubeManager.commentList.length; i++) {
-                    commentList.appendChild(youtubeManager.commentList[i])
+
+                let commentTemplate = {
+                    "rpid": 0,
+                    "oid": 0,
+                    "type": 1,
+                    "mid": 0,
+                    "root": 0,
+                    "parent": 0,
+                    "dialog": 0,
+                    "count": 0,
+                    "rcount": 0,
+                    "state": 0,
+                    "fansgrade": 0,
+                    "attr": 0,
+                    "ctime": 1669435438,
+                    "rpid_str": "0",
+                    "root_str": "0",
+                    "parent_str": "0",
+                    "like": 0,
+                    "action": 0,
+                    "member": {
+                        "mid": "0",
+                        "uname": "",
+                        "sex": "未知",
+                        "sign": "",
+                        "avatar": "",
+                        "rank": "10000",
+                        "face_nft_new": 0,
+                        "is_senior_member": 0,
+                        "pendant": {
+                            "pid": 0,
+                            "name": "",
+                            "image": "",
+                            "expire": 0,
+                            "image_enhance": "",
+                            "image_enhance_frame": ""
+                        },
+                        "nameplate": {
+                            "nid": 0,
+                            "name": "",
+                            "image": "",
+                            "image_small": "",
+                            "level": "",
+                            "condition": ""
+                        },
+                        "official_verify": {"type": -1, "desc": ""},
+                        "fans_detail": null,
+                        "user_sailing": {"pendant": null, "cardbg": null, "cardbg_with_focus": null},
+                        "is_contractor": false,
+                        "contract_desc": "",
+                        "nft_interaction": null
+                    },
+                    "content": {
+                        "message": "",
+                        "plat": 0,
+                        "device": "",
+                        "members": [],
+                        "max_line": 6
+                    },
+                    "replies": null,
+                    "assist": 0,
+                    "up_action": {"like": false, "reply": false},
+                    "invisible": false,
+                    "reply_control": {"time_desc": ""},
+                    "folder": {"has_folded": false, "is_folded": false, "rule": ""}
                 }
-                youtubeManager.showed = true
-            } else {
-                if (o.loading
-                ) return;
+
+                for (let comment of commentList) {
+                    let reply = commentTemplate
+                    reply = JSON.parse(JSON.stringify(reply))
+                    reply.content.message = comment['text']
+                    reply.reply_control.time_desc = comment.time
+                    reply.member.uname = comment.author
+                    reply.member.avatar = comment.photo
+                    reply.like = comment.votes
+                    reply.rpid = comment.rpid
+                    reply.rpid_str = reply.rpid.toString()
+                    if (comment.hasOwnProperty("comment")) {
+                        reply.rcount = comment.comment
+                        reply.count = comment.comment
+                        reply.reply_control.sub_reply_entry_text = `共${comment.comment}条回复`
+                        reply.reply_control.sub_reply_title_text = `相关回复共${comment.comment}条`
+
+                        let invisibleComment = JSON.parse(JSON.stringify(commentTemplate))
+                        invisibleComment.invisible = true
+                        invisibleComment.parent = reply.rpid
+                        invisibleComment.parent_str = reply.rpid_str
+                        reply.replies = [invisibleComment]
+                    }
+                    response.data.replies.push(reply)
+                }
+                response.data.cursor.is_end = isEnd
+                return JSON.stringify(response)
             }
 
+            function buildSublist(commentList, pageInfo) {
+                let response = {
+                    "code": 0, "message": "0", "ttl": 1, "data": {
+                        "config": {"showtopic": 0, "show_up_flag": false, "read_only": false},
+                        "control": {
+                            "input_disable": false,
+                            "root_input_text": "发一条友善的评论",
+                            "child_input_text": "",
+                            "giveup_input_text": "不发没关系，请继续友善哦~",
+                            "answer_guide_text": "需要升级成为lv2会员后才可以评论，先去答题转正吧！",
+                            "answer_guide_icon_url": "http://i0.hdslb.com/bfs/emote/96940d16602cacbbac796245b7bb99fa9b5c970c.png",
+                            "answer_guide_ios_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1&re_src=12",
+                            "answer_guide_android_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1&re_src=6",
+                            "bg_text": "",
+                            "show_type": 1,
+                            "show_text": "",
+                            "web_selection": false,
+                            "disable_jump_emote": false
+                        },
+                        "page": pageInfo,
+                        "replies": [],
+                        "root": {},
+                        "show_bvid": true,
+                        "show_text": "按时间",
+                        "show_type": 1,
+                        "upper": {"mid": 0}
+                    }
+                }
+                let commentTemplate = {
+                    "rpid": 0,
+                    "oid": 0,
+                    "type": 1,
+                    "mid": 0,
+                    "root": 0,
+                    "parent": 0,
+                    "dialog": 0,
+                    "count": 0,
+                    "rcount": 0,
+                    "state": 0,
+                    "fansgrade": 0,
+                    "attr": 0,
+                    "ctime": 1669435438,
+                    "rpid_str": "0",
+                    "root_str": "0",
+                    "parent_str": "0",
+                    "like": 0,
+                    "action": 0,
+                    "member": {
+                        "mid": "0",
+                        "uname": "",
+                        "sex": "未知",
+                        "sign": "",
+                        "avatar": "",
+                        "rank": "10000",
+                        "face_nft_new": 0,
+                        "is_senior_member": 0,
+                        "pendant": {
+                            "pid": 0,
+                            "name": "",
+                            "image": "",
+                            "expire": 0,
+                            "image_enhance": "",
+                            "image_enhance_frame": ""
+                        },
+                        "nameplate": {
+                            "nid": 0,
+                            "name": "",
+                            "image": "",
+                            "image_small": "",
+                            "level": "",
+                            "condition": ""
+                        },
+                        "official_verify": {"type": -1, "desc": ""},
+                        "fans_detail": null,
+                        "user_sailing": {"pendant": null, "cardbg": null, "cardbg_with_focus": null},
+                        "is_contractor": false,
+                        "contract_desc": "",
+                        "nft_interaction": null
+                    },
+                    "content": {
+                        "message": "",
+                        "plat": 0,
+                        "device": "",
+                        "members": [],
+                        "max_line": 6
+                    },
+                    "replies": null,
+                    "assist": 0,
+                    "up_action": {"like": false, "reply": false},
+                    "invisible": false,
+                    "reply_control": {"time_desc": ""},
+                    "folder": {"has_folded": false, "is_folded": false, "rule": ""}
+                }
+                for (let comment of commentList) {
+                    let reply = commentTemplate
+                    reply = JSON.parse(JSON.stringify(reply))
+                    reply.content.message = comment['text']
+                    reply.reply_control.time_desc = comment.time
+                    reply.member.uname = comment.author
+                    reply.member.avatar = comment.photo
+                    reply.like = comment.votes
+                    response.data.replies.push(reply)
+                }
+                return JSON.stringify(response)
+            }
 
-            o.loading = !0
-            let loadingState = document.querySelector("#comment > div > div.comment > div > div.loading-state")
-            loadingState.innerHTML = '正在加载中...'
-
-            renderPage()
-                .then(function (e) {
-                    e ? loadingState.innerHTML = "没有更多评论" : loadingState.innerHTML = ""
-                })
-                .catch(function (e) {
-                    console.log(e)
-                    o.loaded || o._showLoading('<span>加载失败，<a class="reload-comment">点击重试</a></span>')
-                })
-                .finally(function () {
-                    o.loading = !1
-                })
+            youtubeManager.loadComment = loadYoutubeComment
+            let youtubeId = lastDesc[3].youtube
+            if (youtubeManager.created === false) {
+                youtubeManager.youtubeId = youtubeId
+                renderYoutubeButton()
+            }
         }
+
+        if (document.querySelector('[class="comment-m-v1"]') !== null) {
+            return buildLoadPageV2(lastDesc)
+        } else {
+            return buildLoadPageV1(lastDesc)
+        }
+
     }
 
 

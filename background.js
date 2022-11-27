@@ -12,6 +12,7 @@ let defaultConfig = {
     ignoreBili: false,
     bindedCid: {},
     uidFilter: -1,
+    blockHighlightDanmaku: true,
     filterRule: [
         {
             string: ['⎛', '[oh', '[前方', '走好'],
@@ -19,6 +20,14 @@ let defaultConfig = {
     ],
     version: '2.0'
 };
+let configDetail = {
+    danmuRate: '将加载3000*{danmuRate}条以上的B站弹幕',
+    uidFilter: '将过滤uid在{uidFilter}以上的弹幕',
+    nicoDanmuRate: '将加载3000*{nicoDanmuRate}条的N站弹幕',
+    translateNicoComment: '翻译N站弹幕',
+    translateThreshold: '长度在{translateThreshold}以下的N站弹幕将不会被翻译',
+    replaceKatakana: '将未翻译的N站弹幕中的片假名替换为罗马字'
+}
 let danmuServerDomain, hasProxy, ldldanmu, bindAid, extensionSetting, crcFilter
 console.log('test', test);
 
@@ -37,15 +46,22 @@ async function loadConfig() {
     function help() {
         console.log('https://github.com/DeltaFlyerW/DF_DanmakuExtension')
         console.log('扩展现在的设置为')
-        console.log(format('如对于弹幕池上限为3000的24分钟番剧\n' +
-            '    danmuRate: {danmuRate}, 将加载3000*{danmuRate}条以上的B站弹幕\n' +
-            '    uidFilter: {uidFilter}, 将过滤uid在{uidFilter}以上的弹幕\n' +
-            '    nicoDanmuRate:  {nicoDanmuRate}, 将加载3000*{nicoDanmuRate}条的N站弹幕\n' +
-            '    translateNicoComment: {translateNicoComment}, 翻译N站弹幕\n' +
-            '    translateThreshold: {translateThreshold}, 长度在{translateThreshold}以下的N站弹幕将不会被翻译\n' +
-            '    replaceKatakana: {replaceKatakana}, 将未翻译的N站弹幕中的片假名替换为罗马字', extensionSetting))
+        let message = '如对于弹幕池上限为3000的24分钟番剧\n'
+        for (let key in configDetail) {
+            let detail = configDetail[key]
+            let value = extensionSetting[key]
+            if (detail.indexOf("{" + key + "}") !== -1) {
+                detail = detail.replace("{" + key + "}", extensionSetting[key])
+            } else {
+                if (value === true) value = "是"
+                else if (value === false) value = "否"
+                detail = detail + ': ' + value
+            }
+            message += key + ': ' + extensionSetting[key] + '        //' + detail + '\n'
+        }
+        console.log(message)
         console.log('如需修改设置,请按')
-        console.log('editConfig("danmuRate",3)')
+        console.log('extensionSetting.danmuRate=', 3)
         console.log('的格式输入')
     }
 
@@ -75,6 +91,35 @@ async function loadConfig() {
             localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
         }
     } else initConfig()
+    let realSetting = JSON.parse(JSON.stringify(extensionSetting))
+    for (let key in extensionSetting) {
+        Object.defineProperty(extensionSetting, key, {
+            set: function (value) {
+                if (typeof defaultConfig[key] !== typeof value) {
+                    console.log(key, '项的类型应为', typeof defaultConfig[key], '如', defaultConfig[key])
+                    console.log('而将要修改的值为', value, ',其类型为', typeof value)
+                    throw new Error("修改失败")
+                }
+                if (key === 'uidFilter') {
+                    if (value > 100000000) {
+                        console.log('不推荐用户uid过滤大于一亿')
+                    }
+                }
+                realSetting[key] = value
+                localStorage['extensionSetting'] = JSON.stringify(realSetting)
+                if (key === 'uidFilter') {
+                    buildCrcFilter().then((res) => {
+                        crcFilter = res
+                    })
+                }
+                window.ldldanmu = []
+                return value
+            },
+            get: function () {
+                return realSetting[key]
+            }
+        })
+    }
     hasProxy = false
     help()
     ldldanmu = [];
@@ -84,32 +129,6 @@ async function loadConfig() {
 }
 
 loadConfig()
-
-function editConfig(key, value) {
-    if (!defaultConfig.hasOwnProperty(key)) {
-        console.log('设置中不含有', key, '这一项')
-        return '修改失败'
-    }
-    if (typeof defaultConfig[key] !== typeof value) {
-        console.log(key, '项的类型应为', typeof defaultConfig[key], '如', defaultConfig[key])
-        console.log('而将要修改的值为', value, ',其类型为', typeof value)
-        return '修改失败'
-    }
-    if (key === 'uidFilter') {
-        if (value > 100000000) {
-            console.log('不推荐用户uid过滤大于一亿')
-        }
-    }
-    extensionSetting[key] = value
-    localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
-    if (key === 'uidFilter') {
-        buildCrcFilter().then((res) => {
-            crcFilter = res
-        })
-    }
-    window.ldldanmu = []
-    return '修改成功'
-}
 
 
 let [str, len, searchContent, searchPeriod, ignoreBili] = (function util() {
@@ -180,7 +199,7 @@ let [str, len, searchContent, searchPeriod, ignoreBili] = (function util() {
             return res
         },
         function ignoreBili() {
-            console.log(editConfig('ignoreBili', !extensionSetting.ignoreBili))
+            console.log(extensionSetting.ignoreBili = !extensionSetting.ignoreBili)
         }
     ]
 })();
@@ -192,49 +211,18 @@ let parseNicoServerResponse = function () {
     'use strict'
 
     function getStringWidth(str) {
-
-        var realLength = 0;
-        var len = str.length;
-        var charCode = -1;
-
-        for (var i = 0; i < len; i++) {
-            charCode = str.charCodeAt(i);
-
-            if (charCode >= 0 && charCode <= 254) {
-                // 0-255中的全角文字，依次对应下面的字符
-                // ¢ , £ , § , ¨ , « , ¬ , ¯ , ° , ± , ´ , µ , ¶ , · , ¸ , » , × , ÷
-                if (charCode === 162
-                    || charCode === 163
-                    || charCode === 167
-                    || charCode === 168
-                    || charCode === 171
-                    || charCode === 172
-                    || charCode === 175
-                    || charCode === 176
-                    || charCode === 177
-                    || charCode === 180
-                    || charCode === 181
-                    || charCode === 182
-                    || charCode === 183
-                    || charCode === 184
-                    || charCode === 187
-                    || charCode === 215
-                    || charCode === 247) {
-                    realLength += 2;
-                } else {
-                    realLength += 1;
-                }
-            } else if (charCode >= 65377 && charCode <= 65439) {
-                if (charCode === 65381) { // '･'该字符的长度为两个字节
-                    realLength += 2;
-                } else {
-                    realLength += 1;
-                }
+        let count = 0,
+            c = '';
+        let i = 0, len = str.length;
+        for (; i < len; i++) {
+            c = str.charCodeAt(i);
+            if ((c >= 0x0 && c < 0x81) || (c === 0xf8f0) || (c >= 0xff61 && c < 0xffa0) || (c >= 0xf8f1 && c < 0xf8f4)) {
+                count += 1;
             } else {
-                realLength += 2;
+                count += 2;
             }
         }
-        return realLength;
+        return count;
     }
 
     function resolveNicoDanmu(lNicoCommendObject, startIndex = 0, name = 'niconico') {
@@ -535,54 +523,267 @@ let parseNicoServerResponse = function () {
         return ldanmu
     }
 
-    function katakana(danmu) {
-        let ddkata = {
-            'ウィ': 'wi', 'ウェ': 'we', 'キャ': 'kya', 'キュ': 'kyu', 'キョ': 'kyo', 'ギャ': 'gya', 'ギュ': 'gyu', 'ギョ': 'gyo',
-            'シャ': 'sha', 'シュ': 'shu', 'ショ': 'sho', 'ジャ': 'ja', 'ジュ': 'ju', 'ジョ': 'jo', 'チャ': 'cha', 'チュ': 'chu',
-            'チョ': 'cho', 'ヂャ': 'dha', 'ヂュ': 'dhu', 'ヂョ': 'dho', 'ニャ': 'nya', 'ニュ': 'nyu', 'ニョ': 'nyo', 'ヒャ': 'hya',
-            'ヒュ': 'hyu', 'ヒョ': 'hyo', 'ビャ': 'bya', 'ビュ': 'byu', 'ビョ': 'byo', 'ピャ': 'pya', 'ピュ': 'pyu', 'ピョ': 'pyo',
-            'ミャ': 'mya', 'ミュ': 'myu', 'ミョ': 'myo', 'リャ': 'rya', 'リュ': 'ryu', 'リョ': 'ryo', 'ヴャ': 'vya', 'ヴュ': 'vyu',
-            'ヴョ': 'vyo',
-        }
-        let dskata = {
-            'ア': 'a', 'イ': 'i', 'ウ': 'u', 'エ': 'e', 'オ': 'o', 'カ': 'ka', 'キ': 'ki', 'ク': 'ku', 'ケ': 'ke',
-            'コ': 'ko', 'サ': 'sa', 'シ': 'shi', 'ス': 'su', 'セ': 'se', 'ソ': 'so', 'タ': 'ta', 'チ': 'chi', 'ツ': 'tsu',
-            'テ': 'te', 'ト': 'to', 'ナ': 'na', 'ニ': 'ni', 'ヌ': 'nu', 'ネ': 'ne', 'ノ': 'no', 'ハ': 'ha', 'ヒ': 'hi',
-            'フ': 'fu', 'ヘ': 'he', 'ホ': 'ho', 'マ': 'ma', 'ミ': 'mi', 'ム': 'mu', 'メ': 'me', 'モ': 'mo', 'ヤ': 'ya',
-            'ユ': 'yu', 'ェ': 'e', 'ヨ': 'yo', 'ラ': 'ra', 'リ': 'ri', 'ル': 'ru', 'レ': 're', 'ロ': 'ro', 'ワ': 'wa',
-            'ヲ': 'wo', 'ン': 'n', 'ガ': 'ga', 'ギ': 'gi', 'グ': 'gu', 'ゲ': 'ge', 'ゴ': 'go', 'ザ': 'za', 'ジ': 'ji',
-            'ズ': 'zu', 'ゼ': 'ze', 'ゾ': 'zo', 'ダ': 'da', 'ヂ': 'dji', 'ヅ': 'dzu', 'デ': 'de', 'ド': 'do', 'バ': 'ba',
-            'ビ': 'bi', 'ブ': 'bu', 'ベ': 'be', 'ボ': 'bo', 'パ': 'pa', 'ピ': 'pi', 'プ': 'pu', 'ペ': 'pe', 'ポ': 'po'
-        }
-        let tdanmu = []
-        let ichar = -1
-        while (ichar < danmu.length - 1) {
-            ichar += 1
-            let char = danmu[ichar]
-            let word = danmu.slice(ichar, ichar + 2)
-            if (ddkata.hasOwnProperty(word)) {
-                tdanmu.push(ddkata[word])
-                ichar += 1
-                continue
+    let kanaToRoman = function (targetStr) {
+        'use strict'
+        /**
+         * 変換マップ
+         */
+        let romanMap = {
+            'あ': 'a',
+            'い': 'i',
+            'う': 'u',
+            'え': 'e',
+            'お': 'o',
+            'か': 'ka',
+            'き': 'ki',
+            'く': 'ku',
+            'け': 'ke',
+            'こ': 'ko',
+            'さ': 'sa',
+            'し': 'shi',
+            'す': 'su',
+            'せ': 'se',
+            'そ': 'so',
+            'た': 'ta',
+            'ち': 'chi',
+            'つ': 'tsu',
+            'て': 'te',
+            'と': 'to',
+            'な': 'na',
+            'に': 'ni',
+            'ぬ': 'nu',
+            'ね': 'ne',
+            'の': 'no',
+            'は': 'ha',
+            'ひ': 'hi',
+            'ふ': 'fu',
+            'へ': 'he',
+            'ほ': 'ho',
+            'ま': 'ma',
+            'み': 'mi',
+            'む': 'mu',
+            'め': 'me',
+            'も': 'mo',
+            'や': 'ya',
+            'ゆ': 'yu',
+            'よ': 'yo',
+            'ら': 'ra',
+            'り': 'ri',
+            'る': 'ru',
+            'れ': 're',
+            'ろ': 'ro',
+            'わ': 'wa',
+            'ゐ': 'wi',
+            'ゑ': 'we',
+            'を': 'wo',
+            'ん': 'n',
+            'が': 'ga',
+            'ぎ': 'gi',
+            'ぐ': 'gu',
+            'げ': 'ge',
+            'ご': 'go',
+            'ざ': 'za',
+            'じ': 'ji',
+            'ず': 'zu',
+            'ぜ': 'ze',
+            'ぞ': 'zo',
+            'だ': 'da',
+            'ぢ': 'ji',
+            'づ': 'zu',
+            'で': 'de',
+            'ど': 'do',
+            'ば': 'ba',
+            'び': 'bi',
+            'ぶ': 'bu',
+            'べ': 'be',
+            'ぼ': 'bo',
+            'ぱ': 'pa',
+            'ぴ': 'pi',
+            'ぷ': 'pu',
+            'ぺ': 'pe',
+            'ぽ': 'po',
+            'きゃ': 'kya',
+            'きぃ': 'kyi',
+            'きゅ': 'kyu',
+            'きぇ': 'kye',
+            'きょ': 'kyo',
+            'くぁ': 'qa',
+            'くぃ': 'qi',
+            'くぇ': 'qe',
+            'くぉ': 'qo',
+            'くゃ': 'qya',
+            'くゅ': 'qyu',
+            'くょ': 'qyo',
+            'しゃ': 'sha',
+            'しぃ': 'syi',
+            'しゅ': 'shu',
+            'しぇ': 'sye',
+            'しょ': 'sho',
+            'ちゃ': 'cha',
+            'ちぃ': 'tyi',
+            'ちゅ': 'chu',
+            'ちぇ': 'tye',
+            'ちょ': 'cho',
+            'てゃ': 'tha',
+            'てぃ': 'thi',
+            'てゅ': 'thu',
+            'てぇ': 'the',
+            'てょ': 'tho',
+            'ひゃ': 'hya',
+            'ひぃ': 'hyi',
+            'ひゅ': 'hyu',
+            'ひぇ': 'hye',
+            'ひょ': 'hyo',
+            'ふぁ': 'fa',
+            'ふぃ': 'fi',
+            'ふぇ': 'fe',
+            'ふぉ': 'fo',
+            'みゃ': 'mya',
+            'みぃ': 'myi',
+            'みゅ': 'myu',
+            'みぇ': 'mye',
+            'みょ': 'myo',
+            'ヴぁ': 'va',
+            'ヴぃ': 'vi',
+            'ヴぇ': 've',
+            'ヴぉ': 'vo',
+            'ぎゃ': 'gya',
+            'ぎぃ': 'gyi',
+            'ぎゅ': 'gyu',
+            'ぎぇ': 'gye',
+            'ぎょ': 'gyo',
+            'じゃ': 'ja',
+            'じぃ': 'zyi',
+            'じゅ': 'ju',
+            'じぇ': 'zye',
+            'じょ': 'jo',
+            'ぢゃ': 'dya',
+            'ぢぃ': 'dyi',
+            'ぢゅ': 'dyu',
+            'ぢぇ': 'dye',
+            'ぢょ': 'dyo',
+            'びゃ': 'bya',
+            'びぃ': 'byi',
+            'びゅ': 'byu',
+            'びぇ': 'bye',
+            'びょ': 'byo',
+            'ぴゃ': 'pya',
+            'ぴぃ': 'pyi',
+            'ぴゅ': 'pyu',
+            'ぴぇ': 'pye',
+            'ぴょ': 'pyo',
+            'ぁ': 'xa',
+            'ぃ': 'xi',
+            'ぅ': 'xu',
+            'ぇ': 'xe',
+            'ぉ': 'xo',
+            'ゃ': 'xya',
+            'ゅ': 'xyu',
+            'ょ': 'xyo',
+            'っ': 'xtu',
+            'ヴ': 'vu',
+            'ー': '-',
+            '、': ', ',
+            '，': ', ',
+            '。': '.'
+        };
+
+        /**
+         * 長音のラテン文字
+         */
+        let latins = {
+            'a': 257,
+            'i': 299,
+            'u': 363,
+            'e': 275,
+            'o': 333
+        };
+
+        let remStr = String(targetStr), result = '', slStr, roman, lastStr;
+
+        /**
+         * 残りの文字列から1文字を切り抜く
+         * @return {string} 切り抜いた1つの文字列を返す
+         */
+        let splice = function () {
+            let oneChar = remStr.slice(0, 1);
+            remStr = remStr.slice(1);
+            return oneChar;
+        };
+
+        /**
+         * 残りの文字列の最初が小文字か判定
+         * @return {boolean} 小文字の場合はtrue、そうでない場合はfalseを返す
+         */
+        let isSmallChar = function () {
+            return !!remStr.slice(0, 1).match(/^[ぁぃぅぇぉゃゅょァィゥェォャュョ]$/);
+        };
+
+        /**
+         * カタカナからひらがなへ変換
+         * @param {string} kana 元とおなるカタカナ
+         * @return {string} ひらがなへ変換された文字列
+         */
+        let toHiragana = function (kana) {
+            return kana.replace(/[\u30a1-\u30f6]/g, function (match) {
+                return String.fromCharCode(match.charCodeAt(0) - 0x60);
+            });
+        };
+
+        /**
+         * ひらがなから対応するローマ字を取得
+         * @param {string} kana 元となるひらがな
+         * @return {string} 見つかった場合は対応するローマ字、見つからなかったら元のひらがなを返す
+         */
+        let getRoman = function (kana) {
+            let roman = romanMap[toHiragana(kana)];
+            if (roman) {
+                return roman;
+            } else {
+                return kana;
             }
-            if (char === 'っ' || char === 'ッ') {
-                try {
-                    let nextChar = danmu[ichar + 1]
-                    if (dskata.hasOwnProperty(nextChar))
-                        tdanmu.push(nextChar[word][0] + nextChar[word])
-                    ichar += 1
-                    continue
-                } catch (e) {
+        };
+
+        while (remStr) {
+            slStr = splice();
+
+            if (slStr.match(/^(っ|ッ)$/)) {
+                slStr = splice();
+                if (isSmallChar()) slStr += splice();
+
+                roman = getRoman(slStr);
+                roman = (roman !== slStr ? roman.slice(0, 1) : '') + roman;
+            } else {
+                if (isSmallChar()) slStr += splice();
+
+                roman = getRoman(slStr);
+            }
+
+            let nextRoman = kanaToRoman(remStr.slice(0, 1));
+            if (roman === 'n') {
+                if (nextRoman.match(/^[aiueo]$/)) {
+                    roman += '-';
+                } else if (nextRoman.match(/^[bmp]/)) {
+                    roman = 'm';
+                }
+            } else if (roman === '-') {
+                lastStr = result.match(/[aiueo]$/);
+                if (lastStr) {
+                    result = result.slice(0, -1);
+                    roman = String.fromCharCode(latins[lastStr[0]]);
                 }
             }
-            if (dskata.hasOwnProperty(char)) {
-                tdanmu.push(dskata[char])
-                continue
-            }
-            tdanmu.push(char)
-        }
-        return tdanmu.join('')
 
+            result += roman;
+        }
+
+        return result;
+    };
+
+    function katakana(content) {
+        return content.replace(/[\u30a1-\u30f6]+/g, function (match) {
+            return kanaToRoman(match)
+        })
     }
 
     function replaceKatakana(ldanmu) {
@@ -866,8 +1067,58 @@ let danmuHookResponse = function () {
         }
     }();
 
+    function xmlunEscape(content) {
+        return content.replace('；', ';')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '&')
+            .replace(/&gt;/g, '&')
+            .replace(/&apos;/g, '&')
+            .replace(/&quot;/g, '&')
+    }
+
+    window.xml2danmu = (sdanmu, user = null) => {
+
+        let ldanmu = sdanmu.split('</d><d p=');
+
+        if (ldanmu.length === 1) {
+            return []
+        }
+        let tdanmu = ldanmu[0];
+        ldanmu[0] = tdanmu.slice(tdanmu.indexOf('<d p=') + 5, tdanmu.length);
+        tdanmu = ldanmu[ldanmu.length - 1];
+        ldanmu[ldanmu.length - 1] = tdanmu.slice(0, tdanmu.length - 8);
+        for (let i = 0; i < ldanmu.length; i++) {
+            let danmu = ldanmu[i]
+            let argv = danmu.substring(1, danmu.indexOf('"', 2)).split(',')
+            ldanmu[i] = {
+                color: Number(argv[3]),
+                content: xmlunEscape(danmu.slice(danmu.indexOf('>') + 1, danmu.length)),
+                ctime: Number(argv[4]),
+                fontsize: Number(argv[2]),
+                id: Number(argv[7]),
+                idStr: argv[7],
+                midHash: argv[6],
+                mode: Number(argv[1]),
+                progress: Math.round(Number(argv[0]) * 1000),
+                weight: 10
+            }
+        }
+        return ldanmu
+    }
+
     async function dmFengDanmaku(sn, startIndex = 0) {
         let sdanmu
+
+        try {
+            sdanmu = await xhrGet(danmuServerDomain + '/dmFeng?sn=' + sn)
+            let ldanmu = window.xml2danmu(sdanmu, 'bahamute')
+            for (let danmu of ldanmu) {
+                danmu.content = '\u200b' + danmu.content + '\u200b'
+            }
+            return ldanmu
+        } catch (e) {
+            console.log(e)
+        }
         sdanmu = await xhrPost({
             mode: 'urlEncode',
             data: {'sn': parseInt(sn)},
@@ -2000,43 +2251,6 @@ let danmuHookResponse = function () {
             return tldanmu
         }
 
-        function xmlunEscape(content) {
-            return content.replace('；', ';')
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '&')
-                .replace(/&gt;/g, '&')
-                .replace(/&apos;/g, '&')
-                .replace(/&quot;/g, '&')
-        }
-
-        window.xml2danmu = (sdanmu, user = null) => {
-            let ldanmu = sdanmu.split('</d><d p=');
-
-            if (ldanmu.length === 1) {
-                return []
-            }
-            let tdanmu = ldanmu[0];
-            ldanmu[0] = tdanmu.slice(tdanmu.indexOf('<d p=') + 5, tdanmu.length);
-            tdanmu = ldanmu[ldanmu.length - 1];
-            ldanmu[ldanmu.length - 1] = tdanmu.slice(0, tdanmu.length - 8);
-            for (let i = 0; i < ldanmu.length; i++) {
-                let danmu = ldanmu[i]
-                let argv = danmu.substring(1, danmu.indexOf('"', 2)).split(',')
-                ldanmu[i] = {
-                    color: Number(argv[3]),
-                    content: xmlunEscape(danmu.slice(danmu.indexOf('>') + 1, danmu.length)),
-                    ctime: Number(argv[4]),
-                    fontsize: Number(argv[2]),
-                    id: Number(argv[7]),
-                    idStr: argv[7],
-                    midHash: argv[6],
-                    mode: Number(argv[1]),
-                    progress: Math.round(Number(argv[0]) * 1000),
-                    weight: 10
-                }
-            }
-            return ldanmu
-        }
 
         function getdate(date) {
             let month = Number(date.getMonth()) + 1;
@@ -2752,27 +2966,31 @@ let danmuHookResponse = function () {
                 if (danmu.userid) {
                     midHash = danmu.userid
                 }
-                ldanmu[i] = `<d p="${danmu.progress / 1000},${danmu.mode},${danmu.fontsize},${danmu.color},${danmu.ctime},${0},${midHash},${danmu.idStr}">${htmlEscape(danmu.content)}</d>`
+                ldanmu[i] = `<d p="${danmu.progress / 1000},${danmu.mode},${danmu.fontsize},${danmu.color},${danmu.ctime},${0},${midHash},${danmu.idStr}">${xmlEscape(danmu.content)}</d>`
             }
             return ldanmu
         }
 
-        function htmlEscape(text) {
-            if (!text) return text
-            text = text.replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f]/g, ' ')
-            return text.replace(/[<>"&]/g, function (match, pos, originalText) {
-                switch (match) {
-                    case "<":
-                        return "&lt;";
-                    case ">":
-                        return "&gt;";
-                    case "&":
-                        return "&amp;";
-                    case "\"":
-                        return '"';
+        let xmlEscape = (() => {
+            const replaceMap = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&apos;",
+            }
+
+            return (text) => {
+                if (!text) return text
+                text = text.replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f]/g, ' ')
+                if (text.indexOf('&amp;') !== -1) {
+                    return text
                 }
-            });
-        }
+                return text.replace(/[<>&"']/g, function (match, pos, originalText) {
+                    return replaceMap[match]
+                });
+            }
+        })();
 
         function downloadFile(fileName, content, type = 'text/plain;charset=utf-8') {
             let aLink = document.createElement('a');
@@ -3057,7 +3275,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
             return sendResponseAsync(extensionSetting)
 
         } else if (request.type === "editSetting") {
-            editConfig(request.key, request.value)
+            extensionSetting[request.key] = request.value
             localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
             return sendResponseAsync('success')
         } else if (request.type === "parse") {
@@ -3477,27 +3695,3 @@ chrome.contextMenus.create({
 })
 //chrome end
 
-chrome.webRequest.onBeforeSendHeaders.addListener(function (details) {
-    var newRef = "http://localhost:18090/";
-    var gotRef = false;
-    console.log(details)
-    for (var n in details.requestHeaders) {
-        gotRef = details.requestHeaders[n].name.toLowerCase() === "referer";
-        if (gotRef) {
-            details.requestHeaders[n].value = newRef;
-            break;
-        }
-    }
-    if (!gotRef) {
-        details.requestHeaders.push({name: "Referer", value: newRef});
-    }
-    return {requestHeaders: details.requestHeaders};
-}, {
-    urls: ["http://localhost:18090/*",
-        "http://127.0.0.1:18090/*",
-    ]
-}, [
-    "requestHeaders",
-    "blocking",
-    "extraHeaders"
-]);

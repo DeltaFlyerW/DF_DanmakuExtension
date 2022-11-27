@@ -1,6 +1,6 @@
 {
   "name": "DF的弹幕扩展",
-  "version": "2.4",
+  "version": "2.4.1",
   "description": "该扩展程序致力于改善弹幕体验XD",
   "author": "DeltaFlyer",
   "permissions": [
@@ -30,7 +30,8 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.bilibili.com/*"
+        "https://www.bilibili.com/video/*",
+        "https://www.bilibili.com/bangumi/*"
       ],
       "js": [
         "script_injector.js"

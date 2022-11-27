@@ -6,7 +6,8 @@ if (document.head) {
         await new Promise((resolve) => setTimeout(resolve, time));
     }
 
-    let setting = postExtension('getSetting').then(function (e) {
+    let setting = {}
+    postExtension('getSetting').then(function (e) {
         setting = e
     })
 
@@ -125,7 +126,7 @@ if (document.head) {
             if (cacheUrls['season']) {
                 seasonInfo = JSON.parse(cacheUrls['season']['data'])
             }
-            if (seasonInfo) {
+            if (seasonInfo && seasonInfo['result'] && seasonInfo['result']['season_id']) {
                 ssid = seasonInfo['result']['season_id']
                 for (let i = 0; i < seasonInfo['result']['episodes'].length; i++) {
                     if (seasonInfo['result']['episodes'][i]['cid'] === parseInt(cid)) {
@@ -222,6 +223,12 @@ if (document.head) {
             if (event.data.type) {
                 if (event.data.type === "pakku_ajax_request") {
                     try {
+                        if (setting.blockHighlightDanmaku) {
+                            var styleSheet = document.createElement("style")
+                            styleSheet.innerText =
+                                '.b-danmaku-high-icon {display: none;}'
+                            document.head.appendChild(styleSheet)
+                        }
                         let cid = /oid=(\d+)/.exec(event.data.arg)[1]
                         let segmentIndex = parseInt(/segment_index=(\d+)/.exec(event.data.arg)[1])
                         if (segmentIndex !== 1) {
@@ -365,9 +372,9 @@ if (document.head) {
     }
     {
         document.addEventListener("DOMNodeInserted", async (msg) => {
-            if (msg.target.className) {
-                if (msg.target.className === "comment-send ") {
-                    if (document.querySelector('li[class^="youtube-comment"]')) {
+            if (typeof msg.target.className == 'string') {
+                if (msg.target.className === "comment-send " || msg.target.className.indexOf('bili-comment') !== -1) {
+                    if (document.querySelector('[class^="youtube-comment"]')) {
                         return
                     }
                     if (!lastDesc) {
@@ -383,6 +390,7 @@ if (document.head) {
                             }
                         )
                     }
+
                     if (lastDesc[3].youtube) {
                         postHook('replaceLoadPage', {'lastDesc': lastDesc})
                     }
