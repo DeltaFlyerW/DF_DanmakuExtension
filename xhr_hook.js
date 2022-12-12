@@ -189,7 +189,7 @@
                         console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
                         return that.pakku_send(arg);
                     }
-                } else if (youtubeManager.showed && this.pakku_url.indexOf("x/v2/reply") !== -1) {
+                } else if (youtubeManager.loadComment && this.pakku_url.indexOf("x/v2/reply") !== -1) {
                     youtubeManager.loadComment(this.pakku_url).then((response) => {
                         this.abort();
                         Object.defineProperty(this, "response", {
@@ -648,25 +648,28 @@
                 youtubeManager.created = true
                 console.log('加载油管评论', youtubeManager.youtubeId)
                 let commentTitle = document.querySelector('[class^="nav-sort"]')
+                let youtubeListItem = createElement('<div class="youtube-comment">油管评论</div>')
+
+
                 for (let child of commentTitle.children) {
                     if (child.className.indexOf("sort") !== -1) {
                         child.addEventListener("click", function (event) {
                             if (!event.isTrusted) {
-                                event.target.hiddenActive = true
                                 return
                             }
                             youtubeManager.init = true
                             youtubeManager.showed = false
+                            youtubeListItem.style.color = "#9499a0"
+                            event.target.style.color = "#18191c"
+
                             for (let child1 of commentTitle.children) {
-                                if (child1.className !== event.target.className) {
-                                    if (event.target.hiddenActive && child1.className.indexOf("sort") !== -1) {
+                                if (child1.className.indexOf("sort") !== -1 && child1.className !== event.target.className) {
+                                    if (event.target.hiddenActive) {
                                         child1.click()
-                                        event.target.hiddenActive = false
                                         event.target.click()
+                                        event.target.hiddenActive = false
                                     }
                                     child1.style.color = "#9499a0"
-                                } else {
-                                    child1.style.color = "#18191c"
                                 }
                             }
                         })
@@ -680,7 +683,6 @@
                 let partSymbol = createElement(existPartSymbol.outerHTML);
                 partSymbol.style.color = "#18191c"
 
-                let youtubeListItem = createElement('<div class="youtube-comment">油管评论</div>')
                 youtubeListItem.style.cursor = "pointer";
                 youtubeListItem.addEventListener("click", function (event) {
                     console.log(event)
@@ -689,8 +691,9 @@
 
                     let sort = commentTitle.className.split(' ')[1]
                     for (let child of commentTitle.children) {
-                        if (child.className.indexOf(sort) === -1 && child.className.indexOf(sort) === -1) {
+                        if (child.className.indexOf(sort) === -1) {
                             child.click()
+                            child.hiddenActive = true
                         }
                         child.style.color = "#9499a0"
                     }
@@ -700,6 +703,10 @@
             }
 
             async function loadYoutubeComment(url) {
+                await new Promise(r => setTimeout(r, 1))
+                if (!youtubeManager.showed) {
+                    throw ''
+                }
                 if (url.indexOf('main') !== -1) {
                     if (youtubeManager.init) {
                         youtubeManager.init = false

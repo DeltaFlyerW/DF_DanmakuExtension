@@ -231,7 +231,7 @@ if (document.head) {
                         }
                         let cid = /oid=(\d+)/.exec(event.data.arg)[1]
                         let segmentIndex = parseInt(/segment_index=(\d+)/.exec(event.data.arg)[1])
-                        if (segmentIndex !== 1) {
+                        if (segmentIndex !== 1 || event.data.arg.indexOf('&pe=360000') !== -1) {
                             window.postMessage({
                                 type: "pakku_ajax_response",
                                 arg: event.data.arg,

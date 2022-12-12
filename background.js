@@ -2407,6 +2407,9 @@ let danmuHookResponse = function () {
                 let aldanmu = [], lfiltedDanmu = [], ldanmu = []
                 let ndanmu, ondanmu
                 [ldanmu, ondanmu] = await commentDanmaku(cid)
+                if (!ldanmu) {
+                    ldanmu = []
+                }
                 ndanmu = ondanmu
                 if (ndanmu === 8000 && duration !== null) {
                     ndanmu = parseInt((duration / 24 / 60) * 3000)
@@ -2418,6 +2421,7 @@ let danmuHookResponse = function () {
                 let result = null
                 while (true) {
                     let sdanmu = null
+                    let url
                     if (isStart || ldanmu.length >= Math.min(ondanmu, 5000) * 0.9) {
                         url = "https://api.bilibili.com/x/v2/dm/web/history/seg.so?type=1&date="
                             + getdate(date) + "&oid=" + cid.toString();
