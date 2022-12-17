@@ -301,11 +301,33 @@
                                 + obj[1][prop].toString().replace('initDanmaku()', 'initDanmaku();window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
                                     .replace("this.danmakuStore.allSegment[o]", "if(window.top.closure.onTimeUpdate)for(let f of window.top.closure.onTimeUpdate)f(o);this.danmakuStore.allSegment[o]")
                             )
-                            window.top.closure.loadDanmu = function (ldanmu) {
-                                console.log('loadDanmu', ldanmu)
-                                window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
-                                window.top.closure.danmakuPlayer.dmListStore.refresh()
+                            if (window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                                //deprecated at 2022.12.16
+                                window.top.closure.loadDanmu = function (ldanmu) {
+                                    console.log('loadDanmu', ldanmu)
+                                    window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                                    window.top.closure.danmakuPlayer.dmListStore.refresh()
+                                }
+                            } else {
+                                window.top.closure.loadDanmu = function (ldanmu) {
+                                    console.log('loadDanmu', ldanmu)
+                                    let temp = []
+                                    for (let danmu of ldanmu) {
+                                        temp.push({
+                                            color: danmu.color,
+                                            date: danmu.ctime,
+                                            mode: danmu.mode,
+                                            size: danmu.fontsize,
+                                            stime: danmu.progress,
+                                            text: danmu.content,
+                                            uhash: danmu.midHash,
+                                            weight: danmu.weight ? danmu.weight : 10
+                                        })
+                                    }
+                                    window.top.closure.danmakuPlayer.danmaku.addList(temp)
+                                }
                             }
+
                         }
                         if (obj[1][prop].toString().indexOf('firstPb') !== -1) {
                             console.log(prop, obj[1])

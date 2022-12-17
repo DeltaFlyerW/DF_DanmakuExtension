@@ -10,12 +10,14 @@ let defaultConfig = {
     translateThreshold: 1,
     replaceKatakana: true,
     ignoreBili: false,
+    nicoOnly: false,
     bindedCid: {},
     uidFilter: -1,
     blockHighlightDanmaku: true,
     filterRule: [
         {
-            string: ['⎛', '[oh', '[前方', '走好'],
+            string: ['⎛', '[oh', '[前方', '走好', '————'],
+            regexp: ['盖.*?亚']
         }
     ],
     version: '2.0'
@@ -131,7 +133,7 @@ async function loadConfig() {
 loadConfig()
 
 
-let [str, len, searchContent, searchPeriod, ignoreBili] = (function util() {
+let [str, len, searchContent, searchPeriod, ignoreBili, nicoOnly] = (function util() {
     Array.prototype.sortMultiParameter = function (parameters) {
         this.sort(function (a, b) {
             for (let p of parameters) {
@@ -200,6 +202,16 @@ let [str, len, searchContent, searchPeriod, ignoreBili] = (function util() {
         },
         function ignoreBili() {
             console.log(extensionSetting.ignoreBili = !extensionSetting.ignoreBili)
+        },
+        function nicoOnly() {
+            if (!extensionSetting.nicoOnly) {
+                extensionSetting.nicoOnly = true
+                extensionSetting.ignoreBili = true
+            } else {
+                extensionSetting.nicoOnly = false
+                extensionSetting.ignoreBili = false
+            }
+            console.log('extensionSetting.nicoOnly =', extensionSetting.nicoOnly)
         }
     ]
 })();
@@ -2636,6 +2648,10 @@ let danmuHookResponse = function () {
             }
             for (let snDict of lsn) {
                 try {
+                    if (extensionSetting.nicoOnly && !(snDict['chatserver'] === 'nicovideo.jp')) {
+                        console.log("skip for nicoOnly", snDict)
+                        continue
+                    }
                     let res, cid = null
                     if (snDict['chatserver'] === 'ani.gamer.com.tw') {
                         try {
