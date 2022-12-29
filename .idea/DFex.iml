@@ -11,5 +11,6 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="DFexBackups" />
     <orderEntry type="module" module-name="release" />
+    <orderEntry type="library" name="run_prettify" level="application" />
   </component>
 </module>

@@ -30,7 +30,7 @@ let configDetail = {
     translateThreshold: '长度在{translateThreshold}以下的N站弹幕将不会被翻译',
     replaceKatakana: '将未翻译的N站弹幕中的片假名替换为罗马字'
 }
-let danmuServerDomain, hasProxy, ldldanmu, bindAid, extensionSetting, crcFilter
+let danmuServerDomain, hasProxy, ldldanmu, bindAid, extensionSetting, crcFilter, realSetting
 console.log('test', test);
 
 
@@ -93,7 +93,7 @@ async function loadConfig() {
             localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
         }
     } else initConfig()
-    let realSetting = JSON.parse(JSON.stringify(extensionSetting))
+    realSetting = JSON.parse(JSON.stringify(extensionSetting))
     for (let key in extensionSetting) {
         Object.defineProperty(extensionSetting, key, {
             set: function (value) {
@@ -2341,7 +2341,9 @@ let danmuHookResponse = function () {
                 // if (tldanmu.length === 0) {
                 //     break
                 // }
-
+                if (tldanmu === null) {
+                    break
+                }
                 tldanmu = colorFilter(tldanmu)
                 tldanmu = await danmuFilter(tldanmu, null, cid)
                 mergeDanmu(aldanmu, tldanmu)
@@ -2462,7 +2464,7 @@ let danmuHookResponse = function () {
                         isStart = false
                     }
                 }
-                if (expectedDanmuNum === -1 || result[2] === 0 || (result[2] < expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
+                if (true || expectedDanmuNum === -1 || result[2] === 0 || (result[2] < expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
                     mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
                 }
                 return result
@@ -3293,7 +3295,11 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                 testServer()
             }
             return sendResponseAsync(extensionSetting)
-
+        } else if (request.type === "getOption") {
+            if (!danmuServerDomain) {
+                testServer()
+            }
+            return sendResponseAsync({setting: realSetting, detail: configDetail})
         } else if (request.type === "editSetting") {
             extensionSetting[request.key] = request.value
             localStorage['extensionSetting'] = JSON.stringify(extensionSetting)

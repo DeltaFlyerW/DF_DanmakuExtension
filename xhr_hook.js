@@ -219,10 +219,11 @@
                         this.responseURL = this.pakku_url
                         console.log("pakku ajax: got tampered response for", this.pakku_url);
                         this.pakku_load_callback = this.pakku_load_callback || [];
-                        if (this.onreadystatechange)
-                            this.pakku_load_callback.push(this.onreadystatechange);
-                        if (this.onload)
-                            this.pakku_load_callback.push(this.onload);
+                        for (let callback of [this.onreadystatechange, this.onload, this.onloadend]) {
+                            if (callback) {
+                                this.pakku_load_callback.push(callback);
+                            }
+                        }
                         if (this.pakku_load_callback.length > 0) {
                             for (let i = 0; i < this.pakku_load_callback.length; i++) this.pakku_load_callback[i].bind(this)();
                         }
@@ -298,8 +299,8 @@
                             window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
 
                                 // eval('obj[1][prop]='
-                                + obj[1][prop].toString().replace('initDanmaku()', 'initDanmaku();window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
-                                    .replace("this.danmakuStore.allSegment[o]", "if(window.top.closure.onTimeUpdate)for(let f of window.top.closure.onTimeUpdate)f(o);this.danmakuStore.allSegment[o]")
+                                + obj[1][prop].toString().replace(';initDanmaku()', ';initDanmaku();window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
+                                    .replace(";this.danmakuStore.allSegment[o]", ";if(window.top.closure.onTimeUpdate)for(let f of window.top.closure.onTimeUpdate)f(o);this.danmakuStore.allSegment[o]")
                             )
                             if (window.top.closure.danmakuPlayer.dmListStore.appendDm) {
                                 //deprecated at 2022.12.16
