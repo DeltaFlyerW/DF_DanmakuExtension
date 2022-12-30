@@ -3484,10 +3484,6 @@ async function buildCrcFilter() {
         },
         {URL: 'http://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
         {URL: 'https://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://textuploader.com/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://localhost:18090/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://127.0.0.1:18090/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-
     ]
     let headersPerUrl = {};
     let urlsToAlter = [];

@@ -82,6 +82,29 @@ async function requestSetting() {
     help()
 }
 
+let layout = {
+    "B站弹幕": {
+        danmuRate: null,
+        uidFilter: null,
+        blockHighlightDanmaku: "屏蔽高亮弹幕",
+        ignoreBili: "不加载B站弹幕",
+    },
+    "N站弹幕": {
+        loadNicoComment: "加载N站弹幕",
+        nicoDanmuRate: null,
+        nicoOnly: "仅加载N站弹幕",
+        translateNicoComment: null,
+        replaceKatakana: null,
+        translateThreshold: null,
+    },
+    "高级设置": {
+        loadNicoScript: "加载N站弹幕脚本命令",
+        bindedCid: null,
+        filterRule: null,
+    }
+}
+
+
 async function renderOption(result) {
     function setLabel(detail, key, value) {
         if (detail.indexOf("{" + key + "}") !== -1) {
@@ -156,7 +179,7 @@ async function renderOption(result) {
             document.querySelector("body").appendChild(rootDiv)
             optionLabel.textContent = setLabel(detail, key, value)
         } else if ((typeof value) === 'object') {
-            let content=JSON.stringify(value, null, 4)
+            let content = JSON.stringify(value, null, 4)
             let rowNumber = content.split('\n').length
             let rootDiv = createElement(
                 `<div class="mb-3" id="${key}-div">

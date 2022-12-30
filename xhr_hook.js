@@ -125,6 +125,9 @@
             }
 
             return function (arg) {
+                if (console.log.__sentry_original__) {
+                    console.log = console.log.__sentry_original__
+                }
                 if (
                     this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1
                     && this.pakku_url.indexOf('data.bilibili.com') === -1
@@ -299,36 +302,34 @@
                             window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
 
                                 // eval('obj[1][prop]='
-                                + obj[1][prop].toString().replace(';initDanmaku()', ';initDanmaku();window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
-                                    .replace(";this.danmakuStore.allSegment[o]", ";if(window.top.closure.onTimeUpdate)for(let f of window.top.closure.onTimeUpdate)f(o);this.danmakuStore.allSegment[o]")
+                                + obj[1][prop].toString().replace(',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
+                                    .replace("o=Math.floor((t+i)/e)+1;", "o=Math.floor((t+i)/e)+1;if(window.top.closure.onTimeUpdate){for(let f of window.top.closure.onTimeUpdate)f(o);};")
                             )
-                            if (window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                                //deprecated at 2022.12.16
-                                window.top.closure.loadDanmu = function (ldanmu) {
-                                    console.log('loadDanmu', ldanmu)
+                            window.top.closure.loadDanmu = function (ldanmu) {
+                                console.log('loadDanmu', ldanmu)
+                                let temp = []
+                                for (let danmu of ldanmu) {
+                                    temp.push({
+                                        color: danmu.color,
+                                        date: danmu.ctime,
+                                        mode: danmu.mode,
+                                        size: danmu.fontsize,
+                                        stime: danmu.progress,
+                                        text: danmu.content,
+                                        uhash: danmu.midHash,
+                                        weight: danmu.weight ? danmu.weight : 10,
+                                        dmid:danmu.id,
+                                    })
+                                }
+                                ldanmu = temp
+                                if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                                    //deprecated at 2022.12.16
                                     window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
                                     window.top.closure.danmakuPlayer.dmListStore.refresh()
-                                }
-                            } else {
-                                window.top.closure.loadDanmu = function (ldanmu) {
-                                    console.log('loadDanmu', ldanmu)
-                                    let temp = []
-                                    for (let danmu of ldanmu) {
-                                        temp.push({
-                                            color: danmu.color,
-                                            date: danmu.ctime,
-                                            mode: danmu.mode,
-                                            size: danmu.fontsize,
-                                            stime: danmu.progress,
-                                            text: danmu.content,
-                                            uhash: danmu.midHash,
-                                            weight: danmu.weight ? danmu.weight : 10
-                                        })
-                                    }
-                                    window.top.closure.danmakuPlayer.danmaku.addList(temp)
+                                } else {
+                                    window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
                                 }
                             }
-
                         }
                         if (obj[1][prop].toString().indexOf('firstPb') !== -1) {
                             console.log(prop, obj[1])

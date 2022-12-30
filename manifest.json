@@ -4,11 +4,8 @@
   "description": "该扩展程序致力于改善弹幕体验XD",
   "author": "DeltaFlyer",
   "permissions": [
-    "*://*.baidu.com/*",
     "*://*.bilibili.com/*",
-    "*://*.nicovideo.jp/*",
     "*://*.gamer.com.tw/*",
-    "*://*.textuploader.com/*",
     "*://www.biliplus.com/*",
     "webRequest",
     "webRequestBlocking",
@@ -23,7 +20,7 @@
   ],
   "browser_action": {
   },
-  "content_security_policy": "default-src 'self'; frame-src ; img-src data: ; object-src 'self'; connect-src http://127.0.0.1:800 https://*.delflare505.win:800 http://152.32.146.234:400 https://delflare505.win:800 http://*.bilibili.com https://textuploader.com https://*.bilibili.com https://*.biliplus.com https://api.dmooji.tv ws://localhost:56789 https://*.nicovideo.jp http://*.nicovideo.jp https://*.gamer.com.tw http://*.gamer.com.tw https://*.baidu.com http://*.baidu.com; style-src 'self' 'unsafe-inline' ",
+  "content_security_policy": "default-src 'self'; frame-src ; img-src data: ; object-src 'self'; connect-src http://127.0.0.1:800 https://*.delflare505.win:800 http://152.32.146.234:400 https://delflare505.win:800 http://*.bilibili.com https://*.bilibili.com https://*.biliplus.com   https://*.gamer.com.tw http://*.gamer.com.tw; style-src 'self' 'unsafe-inline' ",
   "background": {
     "page": "background.html"
   },
