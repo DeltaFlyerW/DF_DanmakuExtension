@@ -899,13 +899,16 @@ async function twitchChat(vid, segmentIndex) {
 
 let danmuHookResponse = function () {
     let danmuFilter = function () {
+        let workerNum = 8
         let lfilterWorker = []
-        for (let i = 0; i < 8; i += 1) {
-            let worker = new Worker(chrome.runtime.getURL("filterWorker.js"))
-            lfilterWorker.push(worker)
-        }
 
         return async function (ldanmu, filterRule = null, cid) {
+            while (lfilterWorker.length < workerNum) {
+                for (let i = 0; i < workerNum; i += 1) {
+                    let worker = new Worker(chrome.runtime.getURL("filterWorker.js"))
+                    lfilterWorker.push(worker)
+                }
+            }
             console.assert(cid !== undefined)
             if (filterRule === null) {
                 filterRule = extensionSetting.filterRule
@@ -928,13 +931,13 @@ let danmuHookResponse = function () {
             for (let ruleGroup of filterRule) {
 
                 if (!ruleGroup['hasTrigger']) {
-                    let ndanmu = Math.floor(ldanmu.length / 8)
+                    let ndanmu = Math.floor(ldanmu.length / workerNum)
                     let nldanmu = [];
                     await new Promise((resolve) => {
                         let iprogress = 0
-                        for (let i = 0; i < 8; i += 1) {
+                        for (let i = 0; i < workerNum; i += 1) {
                             let worker = lfilterWorker[i], end
-                            if (i !== 7) {
+                            if (i !== workerNum - 1) {
                                 end = (i + 1) * ndanmu
                             } else {
                                 end = ldanmu.length
@@ -944,7 +947,7 @@ let danmuHookResponse = function () {
                             //     // console.log(event.data.ldanmu.length,nldanmu.length)
                             //     nldanmu = nldanmu.concat(event.data.ldanmu)
                             //     iprogress += 1
-                            //     if (iprogress === 8) {
+                            //     if (iprogress === workerNum) {
                             //         resolve()
                             //     }
                             // }
@@ -961,7 +964,7 @@ let danmuHookResponse = function () {
                                     nldanmu = nldanmu.concat(event.data.ldanmu)
                                     iprogress += 1
                                     worker.removeEventListener('message', callback)
-                                    if (iprogress === 8) {
+                                    if (iprogress === workerNum) {
                                         resolve()
                                     }
                                 }
@@ -2373,7 +2376,11 @@ let danmuHookResponse = function () {
                     }
                 }
 
-                xhr.send()
+                if (xhr.pakku_send) {
+                    xhr.pakku_send()
+                } else {
+                    xhr.send()
+                }
 
                 return new Promise(
                     (resolve) => {

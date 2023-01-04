@@ -178,7 +178,6 @@
                             that.statusText = "Pakku OK";
                             that.responseURL = that.pakku_url
                             console.log("pakku ajax: got tampered response for", that.pakku_url);
-                            that.abort();
                             that.pakku_load_callback = that.pakku_load_callback || [];
                             if (that.onreadystatechange)
                                 that.pakku_load_callback.push(that.onreadystatechange);
@@ -187,6 +186,7 @@
                             if (that.pakku_load_callback.length > 0) {
                                 for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
                             }
+                            that.abort();
                         });
                     } else {
                         console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
@@ -283,7 +283,7 @@
             widgetsJsonpString = 'videoWidgetsJsonP'
         }
         if (!widgetsJsonpString) return
-        let widgetsJsonp = eval('window.top.' + widgetsJsonpString)
+        let widgetsJsonp = eval(' window.top.' + widgetsJsonpString)
         if (!window.top.closure) {
             window.top.closure = {
                 danmakuPlayer: null,
@@ -303,7 +303,7 @@
 
                                 // eval('obj[1][prop]='
                                 + obj[1][prop].toString().replace(',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
-                                    .replace("o=Math.floor((t+i)/e)+1;", "o=Math.floor((t+i)/e)+1;if(window.top.closure.onTimeUpdate){for(let f of window.top.closure.onTimeUpdate)f(o);};")
+                                    .replace("o=Math.floor((t+i)/e)+1;", "o=Math.floor((t+i)/e)+1;if(\nwindow.top.closure.onTimeUpdate){for(let f of \nwindow.top.closure.onTimeUpdate)f(o);};")
                             )
                             window.top.closure.loadDanmu = function (ldanmu) {
                                 console.log('loadDanmu', ldanmu)
@@ -318,7 +318,7 @@
                                         text: danmu.content,
                                         uhash: danmu.midHash,
                                         weight: danmu.weight ? danmu.weight : 10,
-                                        dmid:danmu.id,
+                                        dmid: danmu.id,
                                     })
                                 }
                                 ldanmu = temp
@@ -336,7 +336,7 @@
                             window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
 
                                 // eval('obj[1][prop]='
-                                + obj[1][prop].toString().replace('this.allDM=', 'window.top.closure.danmakuPlayer=this.player,console.log(this,window.top),this.allDM='))
+                                + obj[1][prop].toString().replace('this.allDM=', '\nwindow.top.closure.danmakuPlayer=this.player,console.log(this,window.top),this.allDM='))
                             window.top.closure.loadDanmu = function (ldanmu) {
                                 console.log('loadDanmu', ldanmu)
                                 window.top.closure.danmakuPlayer.danmaku.loadPb.appendDm(ldanmu)
@@ -348,12 +348,12 @@
                             }
                         }
                     }
-                    if (obj[1][prop].toString().indexOf('listMask.show())') !== -1) {
-                        console.log(prop, obj[1], 'danmukuScroll')
-                        window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
-                            + obj[1][prop].toString().replace('o=this.child;', 'o=this.child;' +
-                                'if(!window.top.closure.danmukuScroll){window.top.closure.danmukuScroll=this,console.log(this,window.top);}'))
-                    }
+                    // if (obj[1][prop].toString().indexOf('listMask.show())') !== -1) {
+                    //     console.log(prop, obj[1], 'danmukuScroll')
+                    //     window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
+                    //         + obj[1][prop].toString().replace('o=this.child;', 'o=this.child;' +
+                    //             'if(!window.top.closure.danmukuScroll){window.top.closure.danmukuScroll=this,console.log(this,window.top);}'))
+                    // }
                 } catch (e) {
                     console.log(e, window.top, window)
                 }
