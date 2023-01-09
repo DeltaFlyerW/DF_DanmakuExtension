@@ -9,14 +9,14 @@
             // console.log(event.data)
             if (event.data.type === 'replaceLoadPage') {
                 console.log('replaceLoadPage')
-                let loadPage = buildLoadPage(event.data.lastDesc)
+                let loadPage = buildLoadPage(event.data.youtube)
                 if (!loadPage) return;
                 if (window.bbComment.prototype.originLoadPage) {
                     return;
                 }
                 eval('window.bbComment.prototype.originLoadPage=' + window.bbComment.prototype.loadPage.toString())
                 if (!window.loadPage) {
-                    window.loadPage = buildLoadPage(event.data.lastDesc)
+                    window.loadPage = buildLoadPage(event.data.youtube)
                 }
                 window.bbComment.prototype.loadPage = function (i, e) {
                     if (!window.loadPage || window.loadPage(i, e)) {
@@ -24,21 +24,12 @@
                     }
                 }
             }
-            if (event.data.type && event.data.type === "pakku_ajax_response") callbacks[event.data.arg](event.data.resp);
+            if (event.data.type && event.data.type === "pakku_ajax_response") {
+                callbacks[event.data.arg](event.data.resp);
+                delete callbacks[event.data.arg]
+            }
             if (event.data.type && event.data.type === "load_danmaku" && event.origin !== 'https://message.bilibili.com') {
                 window.top.closure.loadDanmu(event.data.ldanmu)
-            }
-            if (event.data.type && event.data.type === "load_twitch_chat" && event.origin !== 'https://message.bilibili.com') {
-                window.top.closure.loadDanmu(event.data.ldanmu)
-                let twitchSegment = [1]
-                window.closure.onTimeUpdate = [async function (currentSegmentIndex) {
-                    if (!twitchSegment.includes(currentSegmentIndex)) {
-                        twitchSegment.push(currentSegmentIndex)
-                        console.log('load twitch_chat segmentIndex:', currentSegmentIndex)
-                        let ldanmu = await postExtension("twitch_chat", {segmentIndex: currentSegmentIndex})
-                        window.top.closure.loadDanmu(ldanmu)
-                    }
-                }]
             }
         }
         ,
@@ -71,9 +62,24 @@
         }
     }
 
-
+    let callbacksAfterDanmakuRequest = [
+        () => {
+            if (console.log.__sentry_original__) {
+                console.log = console.log.__sentry_original__
+            }
+        }
+    ];
     let callbacks = {};
+
+
     (function pakkuXhrHook() {
+        async function hasLoadDanmu() {
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            if (window.top.closure && window.top.closure.loadDanmu) {
+                return true
+            }
+        }
+
         // https://github.com/xmcp/pakku.js/blob/master/pakkujs/assets/xhr_hook.js
         XMLHttpRequest.prototype.pakku_open = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function (method, url, async, user, password) {
@@ -125,8 +131,9 @@
             }
 
             return function (arg) {
-                if (console.log.__sentry_original__) {
-                    console.log = console.log.__sentry_original__
+                while (callbacksAfterDanmakuRequest.length !== 0) {
+                    let callback = callbacksAfterDanmakuRequest.pop()
+                    callback()
                 }
                 if (
                     this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1
@@ -140,7 +147,6 @@
                     let that = this;
                     if (this.pakku_load_callback || this.onreadystatechange !== null) {
                         send_msg_proxy(that.pakku_url, function (resp) {
-
                             if (!resp || !resp.data) return that.pakku_send(arg);
                             Object.defineProperty(that, "response", {
                                 writable: true
@@ -186,7 +192,6 @@
                             if (that.pakku_load_callback.length > 0) {
                                 for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
                             }
-                            that.abort();
                         });
                     } else {
                         console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
@@ -265,6 +270,14 @@
     })();
 
     (function closureExpose() {
+        function hookFunction(target, functionName, newFunction) {
+            let __pakku_origin__ = target[functionName]
+            target[functionName] = function () {
+                newFunction.apply(target, arguments)
+                __pakku_origin__.apply(target, arguments)
+            }
+        }
+
         if (window.location.href.indexOf('https://www.bilibili.com/bangumi') === -1
             && window.location.href.indexOf('https://www.bilibili.com/video') === -1) {
             return;
@@ -287,78 +300,137 @@
         if (!window.top.closure) {
             window.top.closure = {
                 danmakuPlayer: null,
-                danmukuScroll: null
+                danmakuScroll: null
+            }
+            for (let key of Object.keys(window.top.closure)) {
+                Object.defineProperty(window.top.closure, key, {
+                    set: function (value) {
+                        let callback = window.top.closure['_' + key]
+                        window.top.closure['_' + key] = value
+                        if (callback) {
+                            callback()
+                        }
+                    },
+                    get: function () {
+                        return window.top.closure['_' + key]
+                    }
+                })
             }
         }
         widgetsJsonp.pakku_push = widgetsJsonp.push
-        widgetsJsonp.push = function (obj) {
-            for (let prop in obj[1]) {
-
-                try {
-                    if (!window.top.closure.danmakuPlayer) {
-
-                        if (obj[1][prop].toString().indexOf('initDanmaku()') !== -1) {
-                            console.log(prop, obj[1])
-                            window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
-
-                                // eval('obj[1][prop]='
-                                + obj[1][prop].toString().replace(',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this,window.top)')
-                                    .replace("o=Math.floor((t+i)/e)+1;", "o=Math.floor((t+i)/e)+1;if(\nwindow.top.closure.onTimeUpdate){for(let f of \nwindow.top.closure.onTimeUpdate)f(o);};")
-                            )
-                            window.top.closure.loadDanmu = function (ldanmu) {
-                                console.log('loadDanmu', ldanmu)
-                                let temp = []
-                                for (let danmu of ldanmu) {
-                                    temp.push({
-                                        color: danmu.color,
-                                        date: danmu.ctime,
-                                        mode: danmu.mode,
-                                        size: danmu.fontsize,
-                                        stime: danmu.progress,
-                                        text: danmu.content,
-                                        uhash: danmu.midHash,
-                                        weight: danmu.weight ? danmu.weight : 10,
-                                        dmid: danmu.id,
-                                    })
-                                }
-                                ldanmu = temp
-                                if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                                    //deprecated at 2022.12.16
-                                    window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
-                                    window.top.closure.danmakuPlayer.dmListStore.refresh()
-                                } else {
-                                    window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
-                                }
+        let injectList = [
+            {
+                keyword: 'initDanmaku()',
+                replaceList: [
+                    [',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this)']
+                ],
+                callback: function () {
+                    let loadedSegmentList = []
+                    window.top.closure._danmakuPlayer = () => {
+                        console.log('hook getDmFromTime')
+                        hookFunction(window.closure.danmakuPlayer, 'getDmFromTime', function (pos) {
+                            let segmentIndex = Math.ceil((pos + 10) / 360)
+                            if (!loadedSegmentList.includes(segmentIndex)) {
+                                loadedSegmentList.push(segmentIndex)
+                                postExtension("actualSegment", {'segmentIndex': segmentIndex})
                             }
-                        }
-                        if (obj[1][prop].toString().indexOf('firstPb') !== -1) {
-                            console.log(prop, obj[1])
-                            window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
-
-                                // eval('obj[1][prop]='
-                                + obj[1][prop].toString().replace('this.allDM=', '\nwindow.top.closure.danmakuPlayer=this.player,console.log(this,window.top),this.allDM='))
-                            window.top.closure.loadDanmu = function (ldanmu) {
-                                console.log('loadDanmu', ldanmu)
-                                window.top.closure.danmakuPlayer.danmaku.loadPb.appendDm(ldanmu)
-                                try {
-                                    window.top.closure.danmukuScroll.reLoad()
-                                } catch (e) {
-                                    console.log(e)
-                                }
+                        })
+                        window.top.closure.loadDanmu = function (ldanmu) {
+                            console.log('loadDanmu', ldanmu)
+                            let temp = []
+                            for (let danmu of ldanmu) {
+                                temp.push({
+                                    color: danmu.color,
+                                    date: danmu.ctime,
+                                    mode: danmu.mode,
+                                    size: danmu.fontsize,
+                                    stime: danmu.progress,
+                                    text: danmu.content,
+                                    uhash: danmu.midHash,
+                                    weight: danmu.weight ? danmu.weight : 10,
+                                    dmid: danmu.id,
+                                })
+                            }
+                            ldanmu = temp
+                            if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                                //deprecated at 2022.12.16
+                                window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                                window.top.closure.danmakuPlayer.dmListStore.refresh()
+                            } else {
+                                window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
+                            }
+                            if (window.top.closure.danmakuScroll) {
+                                window.top.closure.danmakuScroll.toinit()
                             }
                         }
                     }
-                    // if (obj[1][prop].toString().indexOf('listMask.show())') !== -1) {
-                    //     console.log(prop, obj[1], 'danmukuScroll')
-                    //     window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
-                    //         + obj[1][prop].toString().replace('o=this.child;', 'o=this.child;' +
-                    //             'if(!window.top.closure.danmukuScroll){window.top.closure.danmukuScroll=this,console.log(this,window.top);}'))
-                    // }
+                }
+            },
+            {
+                keyword: 'firstPb',
+                replaceList: [
+                    ['this.allDM=', '\nwindow.top.closure.danmakuPlayer=this.player,console.log(this),this.allDM=']
+                ],
+                callback: function () {
+                    window.top.closure.loadDanmu = function (ldanmu) {
+                        console.log('loadDanmu', ldanmu)
+                        window.top.closure.danmakuPlayer.danmaku.loadPb.appendDm(ldanmu)
+                        if (window.top.closure.danmakuScroll) {
+                            window.top.closure.danmakuScroll.toinit()
+                        }
+                    }
+                }
+            },
+            {
+                keyword: '弹幕列表填充中',
+                replaceList: [
+                    ['this.danmaku.style.display="block",',
+                        'this.danmaku.style.display = "block",window.top.closure.danmakuScroll=this,']
+                ]
+            },
+        ]
+
+        widgetsJsonp.push = function (obj) {
+            for (let prop in obj[1]) {
+                try {
+                    for (let inject of injectList) {
+                        if (obj[1][prop].toString().indexOf(inject.keyword) !== -1) {
+                            console.log(prop, obj[1], inject.keyword)
+                            let injectedFunction = obj[1][prop].toString()
+                            let injected = false
+                            for (let r of inject.replaceList) {
+                                if (typeof r === 'string') {
+                                    throw inject
+                                }
+                                let [src, dst] = r
+                                if (injectedFunction.indexOf(src) === -1) {
+                                    console.log('inject for', src, 'not found')
+                                } else {
+                                    injected = true
+                                    console.log('replace ', src)
+                                    injectedFunction = injectedFunction.replace(src, dst)
+                                }
+                            }
+                            if (injected) {
+                                if (inject.callback) {
+                                    inject.callback()
+                                }
+                                try {
+                                    window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
+                                        + injectedFunction
+                                    )
+                                } catch (e) {
+                                    console.log(e)
+                                    console.log(e.stack)
+                                }
+
+                            }
+                        }
+                    }
                 } catch (e) {
                     console.log(e, window.top, window)
                 }
                 widgetsJsonp.pakku_push(obj)
-
             }
         }
         console.log(window.nanoWidgetsJsonp)
@@ -377,7 +449,7 @@
         init: true
     }
 
-    let buildLoadPage = function (lastDesc) {
+    let buildLoadPage = function (youtubeId) {
         async function sleep(seconds) {
             await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
         }
@@ -468,7 +540,7 @@
             dst.style.cssText = document.defaultView.getComputedStyle(src, "").cssText;
         }
 
-        function buildLoadPageV1(lastDesc,) {
+        function buildLoadPageV1(youtubeId,) {
             if (youtubeManager.lastHref !== window.location.href) {
                 youtubeManager = {
                     youtubeId: null,
@@ -605,7 +677,6 @@
                 commentTitle.appendChild(youtubeListItem)
             }
 
-            let youtubeId = lastDesc[3].youtube
             if (youtubeManager.created === false) {
                 youtubeManager.youtubeId = youtubeId
                 renderYoutubeButton()
@@ -651,7 +722,7 @@
             }
         }
 
-        function buildLoadPageV2(lastDesc) {
+        function buildLoadPageV2(youtubeId) {
             if (youtubeManager.lastHref !== window.location.href) {
                 youtubeManager = {
                     youtubeId: null,
@@ -1082,7 +1153,6 @@
 
             youtubeManager.loadComment = loadYoutubeComment
             createMutationObserver()
-            let youtubeId = lastDesc[3].youtube
             if (youtubeManager.created === false) {
                 youtubeManager.youtubeId = youtubeId
                 renderYoutubeButton()
@@ -1090,20 +1160,13 @@
         }
 
         if (document.querySelector('[class="comment-m-v1"]') !== null) {
-            return buildLoadPageV2(lastDesc)
+            return buildLoadPageV2(youtubeId)
         } else {
-            return buildLoadPageV1(lastDesc)
+            return buildLoadPageV1(youtubeId)
         }
 
     }
 
-
-    async function hasLoadDanmu() {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        if (window.top.closure && window.top.closure.loadDanmu) {
-            return true
-        }
-    }
 
     window.previewDanmaku = function (xml) {
         postExtension('previewDanmaku', {

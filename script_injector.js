@@ -28,6 +28,7 @@ if (document.head) {
     let lastHref = null
     let lastDesc = null
     let currentCid = null
+    let runningDescParserList = []
     let cacheUrls = []
 
     async function getBiliVideoDuration(aid, cid, ipage = undefined) {
@@ -53,122 +54,90 @@ if (document.head) {
     }
 
     async function getDescInfo(cid) {
-        console.log(lastHref, window.location.href)
-        if (window.location.href === lastHref) {
-            return lastDesc
+        if (runningDescParserList.length !== 0) {
+            console.log('waiting for prev parser')
+            await new Promise(resolve => {
+                runningDescParserList.push({'cid': cid, callback: resolve})
+            })
+        } else {
+            console.log('first start', runningDescParserList)
+            runningDescParserList.push({'cid': cid})
+        }
+        console.log(lastHref, window.location.href, runningDescParserList)
+        if (window.location.href === lastHref && cid === currentCid) {
         } else {
             if (lastHref !== null) {
                 await sleep(1000)
             }
-        }
-
-        let extraInfo = {}
-        let desc = document.querySelector('div[class^="desc-info"]')
-        if (desc !== null) {
-            let info = desc.querySelector('span')
-            if (info === null) {
-                console.log('Desc not found')
-            } else {
-                let youtubeUrl = /\.youtube\.com\/watch\?[Vv]=([0-9a-zA-Z\-_]*)/.exec(info.innerText)
-                if (youtubeUrl === null) {
-                    youtubeUrl = /youtu\.be\/([_0-9a-zA-Z]*)/.exec(info.innerText)
-                }
-                if (youtubeUrl !== null) {
-                    youtubeUrl = youtubeUrl[1]
-                    console.log('Found YoutubeUrl:' + youtubeUrl)
-                    extraInfo['youtube'] = youtubeUrl
-                }
-                let lnico = info.querySelectorAll('a[target=_blank][href^="//acg.tv/sm"]');
-                let nico = lnico[0]
-                let nicoinfo = null
-                if (nico) {
-                    nicoinfo = nico.getAttribute('href')
-                    nicoinfo = /([sS][mM]\d+)/.exec(nicoinfo)
-                    if (nicoinfo !== null) {
-                        nicoinfo = nicoinfo[1]
+            let extraInfo = {}
+            let desc = document.querySelector('div[class^="desc-info"]')
+            if (desc !== null) {
+                let info = desc.querySelector('span')
+                if (info === null) {
+                    console.log('Desc not found')
+                } else {
+                    let youtubeUrl = /\.youtube\.com\/watch\?[Vv]=([0-9a-zA-Z\-_]*)/.exec(info.innerText)
+                    if (youtubeUrl === null) {
+                        youtubeUrl = /youtu\.be\/([_0-9a-zA-Z]*)/.exec(info.innerText)
                     }
-                    for (let nico of lnico) {
-                        let nicoinfo = nico.getAttribute('href')
+                    if (youtubeUrl !== null) {
+                        youtubeUrl = youtubeUrl[1]
+                        console.log('Found YoutubeUrl:' + youtubeUrl)
+                        extraInfo['youtube'] = youtubeUrl
+                    }
+                    let lnico = info.querySelectorAll('a[target=_blank][href^="//acg.tv/sm"]');
+                    let nico = lnico[0]
+                    let nicoinfo = null
+                    if (nico) {
+                        nicoinfo = nico.getAttribute('href')
                         nicoinfo = /([sS][mM]\d+)/.exec(nicoinfo)
-                        nico.setAttribute('href', 'https://www.nicovideo.jp/watch/' + nicoinfo[1])
-                    }
-                }
-
-                if (nicoinfo === null) {
-                    nicoinfo = /([sS][mM]\d+)/.exec(info.innerText)
-                    if (nicoinfo !== null) {
-                        nicoinfo = nicoinfo[1]
-                    }
-                }
-                if (nicoinfo !== null) {
-                    nicoinfo = nicoinfo.toLowerCase()
-                    console.log('Found NicoUrl:' + nicoinfo)
-                    extraInfo['niconico'] = nicoinfo
-                }
-                let twitchVOD = /https:\/\/www.twitch.tv\/videos\/(\d+)/.exec(info.innerText)
-                if (twitchVOD !== null) {
-                    console.log('Found twitchVOD:' + twitchVOD[1])
-                    extraInfo['twitch'] = twitchVOD[1]
-                }
-            }
-            // }
-        } else {
-            console.log('Desc not found')
-        }
-
-        // console.log(playerInfo.textContent)
-
-
-        let ssid, aid, duration
-        let ipage = null
-        if (/play\/ss(\d+)/.exec(document.querySelector('script[type="application/ld+json"]').textContent)) {
-            let seasonInfo
-            if (cacheUrls['season']) {
-                seasonInfo = JSON.parse(cacheUrls['season']['data'])
-            }
-            if (seasonInfo && seasonInfo['result'] && seasonInfo['result']['season_id']) {
-                ssid = seasonInfo['result']['season_id']
-                for (let i = 0; i < seasonInfo['result']['episodes'].length; i++) {
-                    if (seasonInfo['result']['episodes'][i]['cid'] === parseInt(cid)) {
-                        aid = seasonInfo['result']['episodes'][i]['aid']
-                        ipage = i
-                        break
-                    }
-                }
-                if (ipage === null) {
-                    debugger
-                }
-            } else {
-                ssid = /play\/ss(\d+)/.exec(window.location.href)
-                if (ssid) {
-                    ssid = ssid[1]
-                    let data = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid))
-                    extraInfo['firstAid'] = data['result']['main_section']['episodes'][0]['aid']
-                    for (let i = 0; i < data.result.main_section.episodes.length; i++) {
-                        if (data.result.main_section.episodes[i].cid === parseInt(cid)) {
-                            aid = data.result.main_section.episodes[i].aid
-                            ipage = i
+                        if (nicoinfo !== null) {
+                            nicoinfo = nicoinfo[1]
+                        }
+                        for (let nico of lnico) {
+                            let nicoinfo = nico.getAttribute('href')
+                            nicoinfo = /([sS][mM]\d+)/.exec(nicoinfo)
+                            nico.setAttribute('href', 'https://www.nicovideo.jp/watch/' + nicoinfo[1])
                         }
                     }
-                    if (ipage === null) {
-                        debugger
+
+                    if (nicoinfo === null) {
+                        nicoinfo = /([sS][mM]\d+)/.exec(info.innerText)
+                        if (nicoinfo !== null) {
+                            nicoinfo = nicoinfo[1]
+                        }
                     }
-                    if (ipage === null) {
-                        debugger
+                    if (nicoinfo !== null) {
+                        nicoinfo = nicoinfo.toLowerCase()
+                        console.log('Found NicoUrl:' + nicoinfo)
+                        extraInfo['niconico'] = nicoinfo
                     }
-                } else {
-                    let epid = /\/ep(\d+)/.exec(window.location.href)
-                    let data = await parse('https://bangumi.bilibili.com/view/web_api/season?ep_id=' + epid[1])
-                    data = JSON.parse(data)
-                    ssid = data['result']['season_id']
-                    let episodes = data['result']['episodes']
-                    if (episodes.length === 0) {
-                        episodes = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid)).result.main_section.episodes
+                    let twitchVOD = /https:\/\/www.twitch.tv\/videos\/(\d+)/.exec(info.innerText)
+                    if (twitchVOD !== null) {
+                        console.log('Found twitchVOD:' + twitchVOD[1])
+                        extraInfo['twitch'] = twitchVOD[1]
                     }
-                    extraInfo['firstAid'] = episodes[0]['aid']
-                    for (let i = 0; i < episodes.length; i++) {
-                        if (episodes[i]['cid'] === parseInt(cid)) {
-                            aid = episodes[i]['aid']
+                }
+                // }
+            } else {
+                console.log('Desc not found')
+            }
+
+            // console.log(playerInfo.textContent)
+
+
+            let ssid, aid, duration
+            let ipage = null
+            if (/bangumi\/play/.exec(window.location.href)) {
+                let seasonInfo
+                if (cacheUrls['season']) {
+                    seasonInfo = JSON.parse(cacheUrls['season']['data'])
+                }
+                if (seasonInfo && seasonInfo['result'] && seasonInfo['result']['season_id']) {
+                    ssid = seasonInfo['result']['season_id']
+                    for (let i = 0; i < seasonInfo['result']['episodes'].length; i++) {
+                        if (seasonInfo['result']['episodes'][i]['cid'] === parseInt(cid)) {
+                            aid = seasonInfo['result']['episodes'][i]['aid']
                             ipage = i
                             break
                         }
@@ -176,43 +145,98 @@ if (document.head) {
                     if (ipage === null) {
                         debugger
                     }
+                } else {
+                    ssid = /play\/ss(\d+)/.exec(window.location.href)
+                    if (ssid) {
+                        ssid = ssid[1]
+                        let data = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid))
+                        extraInfo['firstAid'] = data['result']['main_section']['episodes'][0]['aid']
+                        for (let i = 0; i < data.result.main_section.episodes.length; i++) {
+                            if (data.result.main_section.episodes[i].cid === parseInt(cid)) {
+                                aid = data.result.main_section.episodes[i].aid
+                                ipage = i
+                            }
+                        }
+                        if (ipage === null) {
+                            debugger
+                        }
+                        if (ipage === null) {
+                            debugger
+                        }
+                    } else {
+                        let epid = /\/ep(\d+)/.exec(window.location.href)
+                        let data = await parse('https://bangumi.bilibili.com/view/web_api/season?ep_id=' + epid[1])
+                        data = JSON.parse(data)
+                        ssid = data['result']['season_id']
+                        let episodes = data['result']['episodes']
+                        if (episodes.length === 0) {
+                            episodes = JSON.parse(await parse('https://api.bilibili.com/pgc/web/season/section?season_id=' + ssid)).result.main_section.episodes
+                        }
+                        extraInfo['firstAid'] = episodes[0]['aid']
+                        for (let i = 0; i < episodes.length; i++) {
+                            if (episodes[i]['cid'] === parseInt(cid)) {
+                                aid = episodes[i]['aid']
+                                ipage = i
+                                break
+                            }
+                        }
+                        if (ipage === null) {
+                            debugger
+                        }
+                    }
                 }
-            }
-        } else {
-            aid = document.querySelector('meta[itemprop="url"]')
-            aid = /(BV.*?)[\/?]/.exec(aid.getAttribute('content'))[1]
-            aid = bv2av(aid)
-            let videoInfo
-            if (cacheUrls['view']) {
-                videoInfo = JSON.parse(cacheUrls['view'].data).data
             } else {
-                videoInfo = JSON.parse(await parse('https://api.bilibili.com/x/web-interface/view?aid=' + aid)).data
+                aid = document.querySelector('meta[itemprop="url"]')
+                aid = /(BV.*?)[\/?]/.exec(aid.getAttribute('content'))[1]
+                aid = bv2av(aid)
+                let videoInfo
+                if (cacheUrls['view']) {
+                    videoInfo = JSON.parse(cacheUrls['view'].data).data
+                } else {
+                    videoInfo = JSON.parse(await parse('https://api.bilibili.com/x/web-interface/view?aid=' + aid)).data
+                }
+                extraInfo.pubdate = videoInfo.pubdate
             }
-            extraInfo.pubdate = videoInfo.pubdate
-        }
-        let mid = document.querySelector('*[id="v_upinfo"]')
+            let mid = document.querySelector('*[id="v_upinfo"]')
 
-        if (mid) {
-            mid = mid.querySelector('a[href^="//space.bilibili.com"]').href
-            mid = /com\/(\d+)/.exec(mid)[1]
-            extraInfo.mid = mid
-        }
+            if (mid) {
+                mid = mid.querySelector('a[href^="//space.bilibili.com"]').href
+                mid = /com\/(\d+)/.exec(mid)[1]
+                extraInfo.mid = mid
+            }
 
 
-        if (aid) {
-            [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
+            if (aid) {
+                [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
+            }
+            extraInfo.duration = duration
+            lastHref = window.location.href
+            lastDesc = [aid, ssid, ipage, extraInfo]
         }
-        extraInfo.duration = duration
-        lastHref = window.location.href
-        lastDesc = [aid, ssid, ipage, extraInfo]
-        window.postMessage({type: 'descLoad', 'desc': lastDesc}, '*')
+
+
+        let nextParser = null
+
+        runningDescParserList = runningDescParserList.filter(parser => {
+            if (parser.cid === cid) {
+                if (parser.callback) {
+                    parser.callback()
+                }
+                return false
+            } else if (!nextParser && parser.callback) {
+                parser.callback()
+                nextParser = true
+                return false
+            } else return true
+        })
+        console.log('desc loaded, remaining count:', runningDescParserList.length, runningDescParserList)
         return lastDesc
     }
 
 
     let skipCid = {}
-    let episodeUrlToBeReplace = []
     chrome.runtime.onMessage.addListener(function (message) {
+        console.log(message)
         if (message.cid === currentCid) {
             window.postMessage(message)
         }
@@ -230,16 +254,6 @@ if (document.head) {
                             document.head.appendChild(styleSheet)
                         }
                         let cid = /oid=(\d+)/.exec(event.data.arg)[1]
-                        let segmentIndex = parseInt(/segment_index=(\d+)/.exec(event.data.arg)[1])
-                        if (segmentIndex !== 1 || event.data.arg.indexOf('&pe=360000') !== -1) {
-                            window.postMessage({
-                                type: "pakku_ajax_response",
-                                arg: event.data.arg,
-                                resp: {data: new Uint8Array()}
-                            }, "*");
-                            return
-                        }
-                        currentCid = cid
                         if (skipCid === cid) {
                             console.log('Ignore cid', skipCid)
                             window.postMessage({
@@ -250,17 +264,9 @@ if (document.head) {
                             return
                         }
                         let res = await getDescInfo(cid)
-                        let aid, ssid, ipage, extraInfo, expectedDanmuNum, ondanmu
+                        currentCid = cid
+                        let aid, ssid, ipage, extraInfo, expectedDanmuNum
                         [aid, ssid, ipage, extraInfo] = res
-                        for (let xss of ['span[class="bilibili-player-video-info-danmaku-number"]',
-                            'span[class="bpx-player-video-info-dm-number"]',
-                            'div[class="bpx-player-video-info-dm"]',]) {
-                            ondanmu = document.querySelector(xss)
-                            if (ondanmu) {
-                                expectedDanmuNum = Number(/\d+/.exec(ondanmu.textContent)[0])
-                                break
-                            }
-                        }
                         let message = {
                             type: "ajax_hook",
                             url: event.data.arg,
@@ -282,16 +288,12 @@ if (document.head) {
 
                         await new Promise(resolve => {
                             function handle(resp, sender, sendResponse) {
+
                                 if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55) || resp.cid !== currentCid)
                                     return;
                                 chrome.runtime.onMessage.removeListener(handle)
                                 if (resp.data !== null && resp.ndanmu !== null) {
                                     console.log('GotDanmuFromDFex', resp.ndanmu)
-                                    if (skipCid !== cid) {
-                                        if (ondanmu) {
-                                            ondanmu.textContent = ondanmu.textContent.replace(/\d+/, resp.ndanmu)
-                                        }
-                                    }
                                     if (setting.debug) {
                                         let danmuSwitch = document.querySelector('div[class="bilibili-player-video-danmaku-switch bui bui-switch"]')
                                         console.log('danmuSwitch', danmuSwitch)
@@ -300,11 +302,13 @@ if (document.head) {
                                         }
                                     }
                                 }
-                                window.postMessage({
+                                let message = {
                                     type: "pakku_ajax_response",
                                     arg: event.data.arg,
                                     resp: resp
-                                }, "*");
+                                }
+                                console.log('postMessage', message)
+                                window.postMessage(message, "*");
                                 resolve()
                             }
 
@@ -327,25 +331,36 @@ if (document.head) {
                     cacheUrls[event.data.urlType] = event.data
                 } else if (event.data.type === 'queryDesc') {
 
-                } else if (event.data.type === 'replaceEpisodeUrl') {
-                    let info = JSON.parse(event.data.info)
-                    for (let episode of episodeUrlToBeReplace) {
-                        let bvid = episode[0], elem = episode[1]
-                        for (let card of info['data']['cards']) {
-                            if (card['desc']['bvid'] === bvid) {
-                                elem.setAttribute('href', JSON.parse(card['card'])['redirect_url'])
-                            }
-                        }
-                    }
                 }
                 if (event.data.source === 'DFex' && !event.data.type.endsWith('_response')) {
                     if (event.data.type === 'previewDanmaku') {
                         event.data.cid = lastDesc.cid
-                    } else if (event.data.type === "twitch_chat") {
-                        if (!lastDesc[3].twitch) {
-                            return
+                    } else if (event.data.type === "actualSegment") {
+                        if (!lastDesc) {
+                            await new Promise((resolve) => {
+                                    let handle = (event) => {
+                                        if (event.source === window && event.data
+                                            && event.data.type === 'descLoad') {
+                                            window.removeEventListener('message', handle)
+                                            resolve()
+                                        }
+                                    }
+                                    window.addEventListener("message", handle, false);
+                                }
+                            )
                         }
-                        event.data.vid = lastDesc.extraInfo.twitch
+                        let [aid, ssid, ipage, extraInfo] = await getDescInfo(currentCid)
+                        let desc = {
+                            aid: aid,
+                            cid: currentCid,
+                            href: window.location.href,
+                            extraInfo: extraInfo,
+                            ssid: ssid,
+                            ipage: ipage,
+                        }
+                        for (let key of Object.keys(desc)) {
+                            event.data[key] = desc[key]
+                        }
                     }
                     chrome.runtime.sendMessage(event.data);
                     let timeStamp = event.data.timeStamp
@@ -359,7 +374,6 @@ if (document.head) {
                         }
 
                         chrome.runtime.onMessage.addListener(handle)
-
                     })
                 }
             }
@@ -367,7 +381,7 @@ if (document.head) {
         ,
         false
     );
-    if (window.location.href.indexOf('https://www.bilibili.com/bangumi') ||
+    if (
         window.location.href.indexOf('https://www.bilibili.com/video')) {
     }
     {
@@ -392,7 +406,7 @@ if (document.head) {
                     }
 
                     if (lastDesc[3].youtube) {
-                        postHook('replaceLoadPage', {'lastDesc': lastDesc})
+                        postHook('replaceLoadPage', {'youtube': lastDesc.youtube})
                     }
                 }
             }

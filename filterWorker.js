@@ -4,6 +4,7 @@
 self.addEventListener('message', function (e) {
     let ruleGroup = e.data.rule
     let nldanmu = []
+    // console.log(e.data.cid, '/', e.data.index, ':process', e.data.ldanmu.length)
     for (let idanmu = 0; idanmu < e.data.ldanmu.length; idanmu += 1) {
         let danmu = e.data.ldanmu[idanmu]
 
@@ -58,7 +59,9 @@ self.addEventListener('message', function (e) {
             console.log(e, danmu)
         }
     }
+
+    // console.log(e.data.cid, '/', e.data.index, ':complete', e.data.ldanmu.length, '->', nldanmu.length)
     self.postMessage(
-        {ldanmu: nldanmu, time: e.data.time, cid: e.data.cid,index:e.data.index}
+        {ldanmu: nldanmu, time: e.data.time, cid: e.data.cid, index: e.data.index}
     )
 }, false)
