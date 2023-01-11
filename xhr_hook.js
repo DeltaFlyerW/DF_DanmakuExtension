@@ -67,6 +67,7 @@
             if (console.log.__sentry_original__) {
                 console.log = console.log.__sentry_original__
             }
+            console.log('disable sentry')
         }
     ];
     let callbacks = {};
@@ -131,14 +132,15 @@
             }
 
             return function (arg) {
-                while (callbacksAfterDanmakuRequest.length !== 0) {
-                    let callback = callbacksAfterDanmakuRequest.pop()
-                    callback()
-                }
+
                 if (
                     this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1
                     && this.pakku_url.indexOf('data.bilibili.com') === -1
                 ) {
+                    while (callbacksAfterDanmakuRequest.length !== 0) {
+                        let callback = callbacksAfterDanmakuRequest.pop()
+                        callback()
+                    }
                     // || this.pakku_url.indexOf('web-interface/view') !== -1) {
                     // injectUI()
                     let link = document.createElement("a");

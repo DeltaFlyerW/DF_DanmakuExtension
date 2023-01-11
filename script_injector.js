@@ -29,6 +29,7 @@ if (document.head) {
     let lastDesc = null
     let currentCid = null
     let runningDescParserList = []
+    let passiveParserList = []
     let cacheUrls = []
 
     async function getBiliVideoDuration(aid, cid, ipage = undefined) {
@@ -229,6 +230,10 @@ if (document.head) {
                 return false
             } else return true
         })
+        passiveParserList.forEach(parser => {
+            parser.callback(lastDesc)
+        })
+        passiveParserList = []
         console.log('desc loaded, remaining count:', runningDescParserList.length, runningDescParserList)
         return lastDesc
     }
@@ -392,21 +397,12 @@ if (document.head) {
                         return
                     }
                     if (!lastDesc) {
-                        lastDesc = await new Promise((resolve) => {
-                                let handle = (event) => {
-                                    if (event.source === window && event.data
-                                        && event.data.type === 'descLoad') {
-                                        window.removeEventListener('message', handle)
-                                        resolve(event.data.desc)
-                                    }
-                                }
-                                window.addEventListener("message", handle, false);
-                            }
-                        )
+                        await new Promise(resolve => {
+                            passiveParserList.push({callback: resolve})
+                        })
                     }
-
                     if (lastDesc[3].youtube) {
-                        postHook('replaceLoadPage', {'youtube': lastDesc.youtube})
+                        postHook('replaceLoadPage', {'youtube': lastDesc[3].youtube})
                     }
                 }
             }

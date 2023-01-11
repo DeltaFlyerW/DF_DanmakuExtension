@@ -1,5 +1,3 @@
-let test = false
-let version = '2.0'
 let defaultConfig = {
     debug: false,
     danmuRate: 2.1,
@@ -42,7 +40,6 @@ let ldldanmu = [
         },
     }
 ]
-console.log('test', test);
 
 
 async function loadConfig() {
@@ -84,26 +81,24 @@ async function loadConfig() {
 
     // console.log(localStorage)
     extensionSetting = {};
-    if (!test) {
-        try {
-            extensionSetting = JSON.parse(localStorage['extensionSetting'])
-            for (let key of Object.keys(extensionSetting)) {
-                if (defaultConfig[key] === undefined) {
-                    delete extensionSetting[key]
-                }
+    try {
+        extensionSetting = JSON.parse(localStorage['extensionSetting'])
+        for (let key of Object.keys(extensionSetting)) {
+            if (defaultConfig[key] === undefined) {
+                delete extensionSetting[key]
             }
-            for (let key of Object.keys(defaultConfig)) {
-                if (extensionSetting[key] === undefined) {
-                    extensionSetting[key] = defaultConfig[key]
-                }
-            }
-            localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
-        } catch (e) {
-            console.log(e.stack)
-            initConfig()
-            localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
         }
-    } else initConfig()
+        for (let key of Object.keys(defaultConfig)) {
+            if (extensionSetting[key] === undefined) {
+                extensionSetting[key] = defaultConfig[key]
+            }
+        }
+        localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
+    } catch (e) {
+        console.log(e.stack)
+        initConfig()
+        localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
+    }
     realSetting = JSON.parse(JSON.stringify(extensionSetting))
     for (let key in extensionSetting) {
         Object.defineProperty(extensionSetting, key, {
@@ -226,7 +221,12 @@ let [str, len, searchContent, searchPeriod, ignoreBili, nicoOnly, stringHash] = 
         },
         function cyrb53(str, seed = 1) {
             //https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js
-
+            /*
+                cyrb53 (c) 2018 bryc (github.com/bryc)
+                A fast and simple hash function with decent collision resistance.
+                Largely inspired by MurmurHash2/3, but with a focus on speed/simplicity.
+                Public domain. Attribution appreciated.
+            */
             let h1 = 0xdeadbeef ^ seed,
                 h2 = 0x41c6ce57 ^ seed;
             for (let i = 0, ch; i < str.length; i++) {
@@ -326,7 +326,7 @@ let parseNicoServerResponse = function () {
                     'type': 'replace',
                 }
                 let argv = content.split(' ')
-                if (len(argv) < 3) {
+                if (argv.length < 3) {
                     continue
                 }
                 if (argv[1][0] === '"') {
@@ -971,11 +971,6 @@ let parseNicoServerResponse = function () {
     }
 }();
 
-async function twitchChat(vid, segmentIndex) {
-    let url = danmuServerDomain + '/segment/twitch?video_id=' + vid + '&segment_index=' + segmentIndex
-    let xhrResponse = await xhrGet(url, null, null, 0, true)
-    return parseNicoServerResponse(xhrResponse.responseText)
-}
 
 let [danmuHookResponse, actualSegmentResponse] = function () {
     window.outsideFliter = [{
@@ -1280,7 +1275,6 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
 
     function danmakuHash(danmu) {
         return (danmu.progress || 0) + stringHash(danmu.content) + (danmu.id || 0)
-
     }
 
     window.danmakuHash = danmakuHash
@@ -1340,8 +1334,8 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             for (let danmu of nldanmu) {
                 let ida = danmakuHash(danmu)
                 if (!oldanmu.idPool.has(ida)) {
-                    result.push(danmu)
                     if (!crcFilter || crcFilter(danmu.midHash)) {
+                        result.push(danmu)
                         oldanmu.push(danmu)
                         oldanmu.idPool.add(ida)
                     }
@@ -2732,11 +2726,11 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 + '&segmentIndex=' + segmentIndex
                 + '&aid=' + aid
                 + '&cid=' + cid
-            if (setting.translateNicoComment) {
-                url += '&translate=1'
-            }
             if (setting.nicoDanmuRate) {
                 url += '&nico_danmaku_limit=' + Math.floor(ndanmu * setting.nicoDanmuRate)
+            }
+            if (setting.translateNicoComment) {
+                url += '&translate=1'
             }
             if (setting.translateThreshold) {
                 url += '&translateThreshold=' + setting.translateThreshold
@@ -2939,50 +2933,55 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         }
 
         return async function mergeDescDanmaku(callback, segmentIndex, aid, cid, ipage, duration, ndanmu, existDanmuNum, extraInfo) {
-            let ldanmu, info
+            let ldanmu, info, url
             if (bindAid && bindAid.indexOf(aid.toString()) !== -1) {
-                let url = danmuServerDomain + '/protobuf/custom?'
-                    + '&index=' + ipage
-                    + '&duration=' + duration
-                    + '&from_ex=1'
-                    + '&segmentIndex=' + segmentIndex
-                    + '&aid=' + aid
-                    + '&cid=' + cid;
-                [ldanmu, info] = await loadServerProtobuf(url)
+                url = danmuServerDomain + '/protobuf/custom?'
             } else {
-                let url = danmuServerDomain + '/protobuf/desc?'
-                    + '&index=' + ipage
-                    + '&duration=' + duration
-                    + '&from_ex=1'
-                    + '&segmentIndex=' + segmentIndex
-                    + '&aid=' + aid
-                    + '&cid=' + cid
+                let hasExtra = false
+                url = danmuServerDomain + '/protobuf/desc?'
                 if (extraInfo.hasOwnProperty('niconico')) {
+                    hasExtra = true
                     url += '&nicoid=' + extraInfo.niconico
                 }
-                if (extraInfo.hasOwnProperty('mid')) {
-                    if (bindAid && bindAid.indexOf('mid_' + extraInfo.mid) !== -1) {
-                        url += '&mid=' + extraInfo.mid
-                        // let result = JSON.parse(await xhrGet(danmuServerDomain + '/bindUserDanmaku?mid='
-                        //     + extraInfo.mid + '&duration=' + duration + '&pubdate=' + extraInfo.pubdate))
-                        // if (/^sm\d+$/.exec(result[0].id)) {
-                        //     let tldanmu = await nicoDanmu(result[0].id, 0, ndanmu)
-                        //     applyOffset(tldanmu, [{progress: 0, offset_seconds: duration - result[0].duration}])
-                        //     ldanmu.push({cid: result[0].id, ldanmu: tldanmu})
-                        //     if (callback) callback({cid: result[0].id, ldanmu: tldanmu})
-                        // }
-                    }
+                if (extraInfo.hasOwnProperty('mid') && bindAid && bindAid.indexOf('mid_' + extraInfo.mid) !== -1) {
+                    hasExtra = true
+                    url += '&mid=' + extraInfo.mid
+                    // let result = JSON.parse(await xhrGet(danmuServerDomain + '/bindUserDanmaku?mid='
+                    //     + extraInfo.mid + '&duration=' + duration + '&pubdate=' + extraInfo.pubdate))
+                    // if (/^sm\d+$/.exec(result[0].id)) {
+                    //     let tldanmu = await nicoDanmu(result[0].id, 0, ndanmu)
+                    //     applyOffset(tldanmu, [{progress: 0, offset_seconds: duration - result[0].duration}])
+                    //     ldanmu.push({cid: result[0].id, ldanmu: tldanmu})
+                    //     if (callback) callback({cid: result[0].id, ldanmu: tldanmu})
+                    // }
                 }
                 if (extraInfo.twitch) {
+                    hasExtra = true
                     url += '&twitch_id=' + extraInfo.twitch
                 }
                 if (extraInfo.youtube) {
                     url += '&youtube_id=' + extraInfo.youtube
                 }
-                [ldanmu, info] = await loadServerProtobuf(url)
+                if (!hasExtra) {
+                    return [[], {}]
+                }
             }
+            url = url
+                + '&index=' + ipage
+                + '&duration=' + duration
+                + '&from_ex=1'
+                + '&segmentIndex=' + segmentIndex
+                + '&aid=' + aid
+                + '&cid=' + cid;
+            if (extensionSetting.translateNicoComment) {
+                url += '&translate=1'
+            }
+            if (extensionSetting.translateThreshold) {
+                url += '&translateThreshold=' + extensionSetting.translateThreshold
+            }
+            [ldanmu, info] = await loadServerProtobuf(url)
             if (callback) {
-                if (info.youtube) {
+                if (info && info.youtube) {
                     callback(null, null, {'type': 'replaceLoadPage', youtube: info.youtube, cid: cid})
                 }
                 callback(ldanmu, null, null, segmentIndex)
@@ -3180,9 +3179,10 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         if (loadDanmu) {
             [loadDanmakuCallback, loadDanmakuAsync] = buildCallback(sendResponseAsync, cid)
         }
-        let ldanmu = null, ndanmu = null
+        let ldanmu = null, ndanmu = null, existedDldanmu = false
         for (let dldanmu of ldldanmu) {
             if (dldanmu.cid === cid) {
+                existedDldanmu = true
                 if (!dldanmu.timestamp || new Date().getTime() - dldanmu.timestamp < 1800000 && dldanmu['segmentDict'][segmentIndex]) {
                     ldanmu = dldanmu['segmentDict'][segmentIndex]
                     ndanmu = dldanmu['ndnamu']
@@ -3197,14 +3197,17 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             if (ldldanmu.length > 10) {
                 ldldanmu.shift()
             }
-            ldldanmu.push({
-                timestamp: new Date().getTime(),
-                "aid": aid,
-                'cid': cid,
-                'ndanmu': null,
-                segmentDict: {},
-                aldanmu: []
-            })
+            if (!existedDldanmu) {
+                ldldanmu.push({
+                    timestamp: new Date().getTime(),
+                    "aid": aid,
+                    'cid': cid,
+                    'ndanmu': null,
+                    segmentDict: {},
+                    aldanmu: []
+                })
+            }
+
             ldanmu = []
             let duration = extraInfo.duration
             let loadBili = null
@@ -3229,7 +3232,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                         outsideDanmaku = mergeDescDanmaku(loadDanmakuCallback, segmentIndex, aid, cid, ipage, duration, ndanmu, ldanmu.length, extraInfo)
                     }
 
-                    let nldanmu = (await outsideDanmaku)[0]
+                    let [nldanmu, info] = (await outsideDanmaku)
                     if (nldanmu.timedOffset) {
                         ldanmu = window.applyTimedOffset(ldanmu, ldanmu.timedOffset)
                     }
@@ -3470,109 +3473,6 @@ async function buildCrcFilter() {
     }
 }
 
-(function corsManipulate() {
-    function getHeaderIndex(headerArray, newHeader) {
-
-        for (let i = 0, len = headerArray.length; i < len; i++) {
-            let currentHeader = headerArray[i];
-            if (currentHeader.hasOwnProperty('name') && currentHeader.name === newHeader.name) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    function mergeNewHeaders(originalHeaders, newHeaders) {
-        //copy the headers for our own usage
-        let mergedHeaders = originalHeaders.slice();
-        for (let i = 0, len = newHeaders.length; i < len; i++) {
-            let index = getHeaderIndex(mergedHeaders, newHeaders[i]);
-
-            //if a matching header is defined, replace it
-            //if not, add the new header to the end
-            if (index > -1) {
-                mergedHeaders[index] = newHeaders[i];
-            } else {
-                mergedHeaders.push(newHeaders[i]);
-            }
-        }
-
-        return mergedHeaders;
-    }
-
-    function matchUrlToHeaders(url, headersPerUrl) {
-        for (let key in headersPerUrl) {
-            //this match is expecting that the user will specify URL domain
-            //so key==http://www.foo.com && url==http://www.foo.com/?x=bar&whatever=12
-            //maybe support regex in the future
-            if (url.indexOf(key) > -1) {
-                return headersPerUrl[key];
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Responds to Chrome's onHeadersReceived event and injects all headers defined for the given URL
-     * @param info {Object} Contains the request info
-     * @see http://code.google.com/chrome/extensions/webRequest.html#event-onHeadersReceived
-     */
-    function onHeadersReceivedHandler(info) {
-        let desiredHeaders = matchUrlToHeaders(info.url, headersPerUrl);
-
-        if (!desiredHeaders)
-            return {};
-
-        return {responseHeaders: mergeNewHeaders(info.responseHeaders, desiredHeaders)};
-
-    }
-
-    let settings = [
-        {
-            URL: 'https://www.biliplus.com/*',
-            headers: [{name: 'Access-Control-Allow-Origin', value: 'https://www.bilibili.com'}]
-        },
-        {URL: 'http://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-        {URL: 'https://ani.gamer.com.tw/*', headers: [{name: 'Access-Control-Allow-Origin', value: '*'}]},
-    ]
-    let headersPerUrl = {};
-    let urlsToAlter = [];
-
-    if (settings) {
-        for (let l = settings.length, i = 0; i < l; i++) {
-            //push each URL we wish to watch for into the array
-            urlsToAlter.push(settings[i].URL);
-
-            //use the URL as a key in the dictionary to lookup the specific headers to manipulate for that URL
-            headersPerUrl[settings[i].URL.replace(/\*/g, '')] = settings[i].headers;
-        }
-    }
-
-    chrome.webRequest.onHeadersReceived.addListener(
-        onHeadersReceivedHandler,
-        // filters
-        {
-            urls: urlsToAlter
-        },
-        // extraInfoSpec
-        ["blocking", "responseHeaders"]
-    );
-
-    chrome.webRequest.onErrorOccurred.addListener(
-        function (info) {
-            console.log('ForceCORS was unable to modify headers for: ' + info.url + ' - ' + info.error)
-        },
-        {
-            urls: urlsToAlter
-        }
-    );
-
-    chrome.webRequest.handlerBehaviorChanged();
-    return true
-})();
-
-
 async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr = false) {
     console.log('Get', url)
     await serverAwait(url)
@@ -3627,7 +3527,7 @@ async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr =
     }
 }
 
-async function loadServerProtobuf(url, timeout = null, header = null, retry = 0) {
+async function loadServerProtobuf(url, timeout = null, header = null, retry = 0, filter = true) {
 
     await serverAwait(url)
     const xhr = new XMLHttpRequest();
@@ -3664,10 +3564,13 @@ async function loadServerProtobuf(url, timeout = null, header = null, retry = 0)
                                 let lBiliDanmaku = []
                                 let lNicoDanmaku = []
                                 let lOtherDanmaku = []
-                                console.log(ldanmu)
+                                let ctime = (new Date().getTime() / 1000).toFixed()
                                 ldanmu.forEach(danmu => {
                                     if (!danmu.idStr) {
                                         danmu.idStr = danmu.id.toString()
+                                    }
+                                    if (!danmu.ctime) {
+                                        danmu.ctime = ctime
                                     }
                                     if (danmu.midHash === 'n') {
                                         lNicoDanmaku.append({
@@ -3683,17 +3586,17 @@ async function loadServerProtobuf(url, timeout = null, header = null, retry = 0)
                                         lOtherDanmaku.push(danmu)
                                     }
                                 })
-                                if (lBiliDanmaku.length !== 0) {
+                                if (filter && lBiliDanmaku.length !== 0) {
                                     lBiliDanmaku = await danmuFilter(lBiliDanmaku)
                                 }
                                 lOtherDanmaku = lOtherDanmaku.concat(parseNicoServerResponse(lNicoDanmaku))
                                 lOtherDanmaku = await danmuFilter(lOtherDanmaku, outsideFliter)
                                 ldanmu = lBiliDanmaku.concat(lOtherDanmaku)
-                                console.log(ldanmu)
 
+                                let info = JSON.parse(xhr.getResponseHeader('content-type').slice(25))
                                 resolve([
                                     ldanmu,
-                                    JSON.parse(xhr.getResponseHeader('content-type').slice(25))
+                                    (info || {})
                                 ])
                             } catch (e) {
                                 console.log(e.stack)
