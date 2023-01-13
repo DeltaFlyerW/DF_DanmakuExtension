@@ -211,6 +211,7 @@ if (document.head) {
                 [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
             }
             extraInfo.duration = duration
+            extraInfo.cid = cid
             lastHref = window.location.href
             lastDesc = [aid, ssid, ipage, extraInfo]
         }
@@ -342,22 +343,16 @@ if (document.head) {
                         event.data.cid = lastDesc.cid
                     } else if (event.data.type === "actualSegment") {
                         if (!lastDesc) {
-                            await new Promise((resolve) => {
-                                    let handle = (event) => {
-                                        if (event.source === window && event.data
-                                            && event.data.type === 'descLoad') {
-                                            window.removeEventListener('message', handle)
-                                            resolve()
-                                        }
-                                    }
-                                    window.addEventListener("message", handle, false);
-                                }
-                            )
+                            if (!lastDesc) {
+                                await new Promise(resolve => {
+                                    passiveParserList.push({callback: resolve})
+                                })
+                            }
                         }
-                        let [aid, ssid, ipage, extraInfo] = await getDescInfo(currentCid)
+                        let [aid, ssid, ipage, extraInfo] = lastDesc
                         let desc = {
                             aid: aid,
-                            cid: currentCid,
+                            cid: extraInfo.cid,
                             href: window.location.href,
                             extraInfo: extraInfo,
                             ssid: ssid,

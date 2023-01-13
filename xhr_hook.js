@@ -327,45 +327,48 @@
                     [',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this)']
                 ],
                 callback: function () {
-                    let loadedSegmentList = []
-                    window.top.closure._danmakuPlayer = () => {
-                        console.log('hook getDmFromTime')
-                        hookFunction(window.closure.danmakuPlayer, 'getDmFromTime', function (pos) {
-                            let segmentIndex = Math.ceil((pos + 10) / 360)
-                            if (!loadedSegmentList.includes(segmentIndex)) {
-                                loadedSegmentList.push(segmentIndex)
-                                postExtension("actualSegment", {'segmentIndex': segmentIndex})
-                            }
-                        })
-                        window.top.closure.loadDanmu = function (ldanmu) {
-                            console.log('loadDanmu', ldanmu)
-                            let temp = []
-                            for (let danmu of ldanmu) {
-                                temp.push({
-                                    color: danmu.color,
-                                    date: danmu.ctime,
-                                    mode: danmu.mode,
-                                    size: danmu.fontsize,
-                                    stime: danmu.progress,
-                                    text: danmu.content,
-                                    uhash: danmu.midHash,
-                                    weight: danmu.weight ? danmu.weight : 10,
-                                    dmid: danmu.id,
-                                })
-                            }
-                            ldanmu = temp
-                            if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                                //deprecated at 2022.12.16
-                                window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
-                                window.top.closure.danmakuPlayer.dmListStore.refresh()
-                            } else {
-                                window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
-                            }
-                            if (window.top.closure.danmakuScroll) {
-                                window.top.closure.danmakuScroll.toinit()
-                            }
+                    window.top.closure.loadDanmu = function (ldanmu) {
+                        console.log('loadDanmu', ldanmu)
+                        let temp = []
+                        for (let danmu of ldanmu) {
+                            temp.push({
+                                color: danmu.color,
+                                date: danmu.ctime,
+                                mode: danmu.mode,
+                                size: danmu.fontsize,
+                                stime: danmu.progress,
+                                text: danmu.content,
+                                uhash: danmu.midHash,
+                                weight: danmu.weight ? danmu.weight : 10,
+                                dmid: danmu.id,
+                            })
                         }
-                    }
+                        ldanmu = temp
+                        if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                            //deprecated at 2022.12.16
+                            window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                            window.top.closure.danmakuPlayer.dmListStore.refresh()
+                        } else {
+                            window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
+                        }
+                        if (window.top.closure.danmakuScroll) {
+                            window.top.closure.danmakuScroll.toinit()
+                        }
+                    };
+                    let loadedSegmentList = []
+                    setInterval(
+                        async function () {
+                            if (window.top.player) {
+                                let segmentIndex = Math.ceil((window.top.player.getCurrentTime() + 30) / 360)
+                                if (!loadedSegmentList.includes(segmentIndex)) {
+                                    loadedSegmentList.push(segmentIndex)
+                                    console.log('postExtension("actualSegment")')
+                                    await postExtension("actualSegment", {'segmentIndex': segmentIndex})
+                                }
+                            }
+                        },
+                        1000
+                    )
                 }
             },
             {

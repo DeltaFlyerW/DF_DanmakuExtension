@@ -38,6 +38,7 @@ let ldldanmu = [
         segmentDict: {
             1: [{'id': 0, content: ''}]
         },
+        loadedBiliSegmentList: []
     }
 ]
 
@@ -2669,6 +2670,144 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         }
     }
 
+    function splitServerDanmaku(ldanmu, info) {
+
+        let source = {
+            //bilibili
+            'b': {
+                elems: [],
+                id: null,
+                site: 'bilibili'
+            },
+            //niconico
+            'n': {
+                elems: [],
+                id: null,
+                site: 'niconico'
+            },
+            //animad
+            'f': {
+                elems: [],
+                id: null,
+                site: 'animad'
+            },
+            //twitch
+            't': {
+                elems: [],
+                id: null,
+                site: 'twitch'
+            },
+            //youtube
+            'y': {
+                elems: [],
+                id: null,
+                site: 'youtube'
+            },
+            //unknown
+            'x': {
+                elems: [],
+                id: null,
+                site: 'unknown'
+            }
+        }
+        if (info && info.source) {
+            for (let key of Object.keys(info.source)) {
+                if (!source.hasOwnProperty(key)) {
+                    source[key] = {
+                        elems: [],
+                        id: info.source[key]
+                    }
+                } else {
+                    source[key].id = info.source[key]
+                }
+            }
+        }
+        let ctime = (new Date().getTime() / 1000).toFixed()
+
+        ldanmu.forEach(danmu => {
+                if (!danmu.ctime) {
+                    danmu.ctime = ctime
+                }
+                if (danmu.pool) {
+                    source['b'].elems.push(danmu)
+                } else {
+                    danmu.pool = 0
+                    if (source.hasOwnProperty(danmu.idStr)) {
+                        source[danmu.idStr].elems.push(danmu)
+                    } else if (!danmu.idStr) {
+                        source['x'].elems.push(danmu)
+                    }
+                    danmu.idStr = danmu.id.toString()
+                }
+            }
+        )
+        if (source['n'].elems.length !== 0) {
+            let temp = []
+            source['n'].elems.forEach(e => {
+                temp.push({
+                    'content': e.content,
+                    'mail': e.midHash,
+                    'id': e.id,
+                    'vpos': e.progress / 10,
+                    'date': e.ctime,
+                })
+            })
+            source['n'].elems = parseNicoServerResponse(temp)
+        }
+        return source
+
+
+    }
+
+    async function filterServerDanmaku(sourceDict) {
+        let biliFilter
+        let otherDanmakuList = []
+        for (let key of Object.keys(sourceDict)) {
+            if (sourceDict[key].elems.length !== 0) {
+                if (key === 'b') {
+                    biliFilter = danmuFilter(sourceDict[key].elems)
+                } else {
+                    otherDanmakuList = otherDanmakuList.concat(sourceDict[key].elems)
+                }
+            }
+        }
+        let result = []
+        if (otherDanmakuList.length !== 0) {
+            result = result.concat(await danmuFilter(otherDanmakuList, outsideFliter))
+        }
+        if (biliFilter) {
+            result = result.concat(await biliFilter)
+        }
+        return result
+    }
+
+    function buildServerUrl(segmentIndex, aid, cid, ssid, ipage, duration, ndanmu, setting = null) {
+        if (setting === null) {
+            setting = extensionSetting
+        }
+        let url = danmuServerDomain + '/protobuf/season?'
+            + 'ss=' + ssid
+            + '&index=' + ipage
+            + '&duration=' + duration
+            + '&from_ex=1'
+            + '&segmentIndex=' + segmentIndex
+            + '&aid=' + aid
+            + '&cid=' + cid
+        if (setting.nicoDanmuRate) {
+            url += '&nico_danmaku_limit=' + Math.floor(ndanmu * setting.nicoDanmuRate)
+        }
+        if (setting.translateNicoComment) {
+            url += '&translate=1'
+        }
+        if (setting.translateThreshold) {
+            url += '&translateThreshold=' + setting.translateThreshold
+        }
+        if (!setting.ignoreBili) {
+            url += '&alias_comment=1'
+        }
+        return url
+    }
+
     let mergeServerDanmaku = function () {
         'use strict'
 
@@ -2715,32 +2854,10 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
 
 
         return async function mergeServerDanmaku(callback, segmentIndex, aid, cid, ssid, ipage, duration, ndanmu, setting = null) {
-            if (setting === null) {
-                setting = extensionSetting
-            }
-            let url = danmuServerDomain + '/protobuf/season?'
-                + 'ss=' + ssid
-                + '&index=' + ipage
-                + '&duration=' + duration
-                + '&from_ex=1'
-                + '&segmentIndex=' + segmentIndex
-                + '&aid=' + aid
-                + '&cid=' + cid
-            if (setting.nicoDanmuRate) {
-                url += '&nico_danmaku_limit=' + Math.floor(ndanmu * setting.nicoDanmuRate)
-            }
-            if (setting.translateNicoComment) {
-                url += '&translate=1'
-            }
-            if (setting.translateThreshold) {
-                url += '&translateThreshold=' + setting.translateThreshold
-            }
-            if (!setting.ignoreBili) {
-                url += '&alias_comment=1'
-            }
-
+            let url = buildServerUrl(segmentIndex, aid, cid, ssid, ipage, duration, ndanmu, setting)
             let [ldanmu, info] = await loadServerProtobuf(url)
-
+            let sourceDict = splitServerDanmaku(ldanmu, info)
+            ldanmu = await filterServerDanmaku(sourceDict)
             if (callback) {
                 callback(ldanmu, null, null, segmentIndex)
             }
@@ -2980,9 +3097,11 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 url += '&translateThreshold=' + extensionSetting.translateThreshold
             }
             [ldanmu, info] = await loadServerProtobuf(url)
+            let sourceDict = splitServerDanmaku(ldanmu, info)
+            ldanmu = await filterServerDanmaku(sourceDict)
             if (callback) {
-                if (info && info.youtube) {
-                    callback(null, null, {'type': 'replaceLoadPage', youtube: info.youtube, cid: cid})
+                if (info && info.source && info.source.y) {
+                    callback(null, null, {'type': 'replaceLoadPage', youtube: info.source.y, cid: cid})
                 }
                 callback(ldanmu, null, null, segmentIndex)
             }
@@ -3067,37 +3186,45 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                     });
                 return
             } else if (cid.startsWith('ss')) {
+                let ssid = cid
                 let zip = new JSZip();
 
                 let data = JSON.parse(await xhrGet('https://api.bilibili.com/pgc/web/season/section?season_id=' + cid.slice(2)))
                 let episodeInfo = JSON.parse(await xhrGet('https://bangumi.bilibili.com/view/web_api/season?season_id=' + cid.slice(2)))
+                // extensionSetting.translateNicoComment = true
+                // extensionSetting.translateThreshold = 1
+                // extensionSetting.nicoDanmuRate = 100
+                // extensionSetting.reverseStartOffset = true
+                // extensionSetting.notReturnProtobuf = true
+
                 let i = 0
-                extensionSetting.translateNicoComment = true
-                extensionSetting.translateThreshold = 1
-                extensionSetting.nicoDanmuRate = 100
-                extensionSetting.reverseStartOffset = true
-                extensionSetting.notReturnProtobuf = true
-                let folder = zip.folder(cid + " " + episodeInfo.result.title)
+                let folder = zip.folder(ssid + " " + episodeInfo.result.title)
                 for (let episode of data.result.main_section.episodes) {
-                    ldanmu = await danmuHookResponse(episode.cid, episode.aid, i, cid.slice(2), {duration: episode.duration / 1000})
                     let fileName
                     if (episode.index) {
-                        fileName = episode.index + ' ' + episode.index_title + ' '
+                        fileName = episode.index + ' ' + episode.index_title
                     } else {
                         fileName = episode.title + ' ' + episode.long_title
                     }
                     console.log(fileName)
-                    for (let tldanmu of ldanmu) {
-                        tldanmu.cid = tldanmu.cid.toString()
-                        if (tldanmu.cid.startsWith('so')) {
-                            extensionSetting.translateNicoComment = false
-                            let rawDanmu = await nicoDanmu(tldanmu.cid, 0, 1000000)
-                            folder.file(fileName + ' ' + tldanmu.cid + '.raw.xml',
-                                genxml(danmuObject2XML(rawDanmu), 0, tldanmu.cid))
-                            extensionSetting.translateNicoComment = true
+                    let bldanmu = (await moreFiltedHistory(episode.cid))[0]
+                    folder.file(fileName + ' ' + episode.cid + '.xml',
+                        genxml(danmuObject2XML(bldanmu), 0, episode.cid))
+
+                    let url = buildServerUrl(-1, episode.aid, episode.cid, ssid.slice(2), i, -1, 1e8, null)
+                    let [ldanmu, info] = await loadServerProtobuf(url)
+                    let sourceDict = splitServerDanmaku(ldanmu, info)
+
+                    for (let key of Object.keys(sourceDict)) {
+                        let source = sourceDict[key]
+                        if (source.elems.length !== 0) {
+                            let id = source.id
+                            if (!id) {
+                                id = source.site
+                            }
+                            folder.file(fileName + ' ' + id + '.xml',
+                                genxml(danmuObject2XML(source.elems), 0, 0))
                         }
-                        folder.file(fileName + ' ' + tldanmu.cid + '.xml',
-                            genxml(danmuObject2XML(tldanmu.ldanmu), 0, tldanmu.cid))
                     }
                     i += 1
                 }
@@ -3174,7 +3301,8 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             }]
     }
 
-    return [async function (url, segmentIndex, cid, aid, ipage, ssid, extraInfo, loadDanmu, sendResponseAsync) {
+
+    return [async function danmuHookResponse(url, segmentIndex, cid, aid, ipage, ssid, extraInfo, loadDanmu, sendResponseAsync) {
         let loadDanmakuCallback, loadDanmakuAsync
         if (loadDanmu) {
             [loadDanmakuCallback, loadDanmakuAsync] = buildCallback(sendResponseAsync, cid)
@@ -3183,7 +3311,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         for (let dldanmu of ldldanmu) {
             if (dldanmu.cid === cid) {
                 existedDldanmu = true
-                if (!dldanmu.timestamp || new Date().getTime() - dldanmu.timestamp < 1800000 && dldanmu['segmentDict'][segmentIndex]) {
+                if (!dldanmu.timestamp || new Date().getTime() - dldanmu.timestamp < 1800000 && dldanmu['loadedBiliSegmentList'].includes(segmentIndex)) {
                     ldanmu = dldanmu['segmentDict'][segmentIndex]
                     ndanmu = dldanmu['ndnamu']
                 } else {
@@ -3204,6 +3332,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                     'cid': cid,
                     'ndanmu': null,
                     segmentDict: {},
+                    loadedBiliSegmentList: [],
                     aldanmu: []
                 })
             }
@@ -3257,6 +3386,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                     let dldanmu = ldldanmu[i]
                     if (dldanmu.cid === cid) {
                         ldanmu = newDanmakuFor(dldanmu.aldanmu, ldanmu)
+                        dldanmu['loadedBiliSegmentList'].push(segmentIndex)
                         if (!dldanmu.segmentDict.hasOwnProperty(segmentIndex)) {
                             dldanmu.segmentDict[segmentIndex] = ldanmu
                         } else {
@@ -3284,12 +3414,14 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             let [loadDanmakuCallback, loadDanmakuAsync] = buildCallback(sendResponseAsync, argv.cid)
             let ndanmu = duration2poolSize(argv.extraInfo.duration)
             if (argv.ssid) {
-                mergeServerDanmaku(loadDanmakuCallback, argv.segmentIndex, argv.aid, argv.cid, argv.ssid, argv.ipage, argv.extraInfo.duration, ndanmu, null, ldanmu.length)
+                mergeServerDanmaku(loadDanmakuCallback, argv.segmentIndex, argv.aid, argv.cid, argv.ssid, argv.ipage, argv.extraInfo.duration, ndanmu, null, 0)
             } else {
                 mergeDescDanmaku(loadDanmakuCallback, argv.segmentIndex, argv.aid, argv.cid, argv.ipage, argv.extraInfo.duration, ndanmu, 0, argv.extraInfo)
             }
         }]
-}();
+}
+
+();
 
 let messageHistory = []
 
@@ -3347,6 +3479,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                 });
             }
         } else if (request.type === "actualSegment") {
+            console.log(request)
             actualSegmentResponse(request, sendResponseAsync)
         } else if (request.type === "getSetting") {
             if (!danmuServerDomain) {
@@ -3561,38 +3694,6 @@ async function loadServerProtobuf(url, timeout = null, header = null, retry = 0,
                             serverResolve(url)
                             try {
                                 let ldanmu = window.proto_seg.decode(new Uint8Array(xhr.response)).elems;
-                                let lBiliDanmaku = []
-                                let lNicoDanmaku = []
-                                let lOtherDanmaku = []
-                                let ctime = (new Date().getTime() / 1000).toFixed()
-                                ldanmu.forEach(danmu => {
-                                    if (!danmu.idStr) {
-                                        danmu.idStr = danmu.id.toString()
-                                    }
-                                    if (!danmu.ctime) {
-                                        danmu.ctime = ctime
-                                    }
-                                    if (danmu.midHash === 'n') {
-                                        lNicoDanmaku.append({
-                                            vpos: danmu.progress / 10,
-                                            date: danmu.ctime,
-                                            mail: danmu.idStr,
-                                            content: danmu.content
-                                        })
-                                    } else if (danmu.pool) {
-                                        lBiliDanmaku.push(danmu)
-                                    } else {
-                                        danmu.pool = 0
-                                        lOtherDanmaku.push(danmu)
-                                    }
-                                })
-                                if (filter && lBiliDanmaku.length !== 0) {
-                                    lBiliDanmaku = await danmuFilter(lBiliDanmaku)
-                                }
-                                lOtherDanmaku = lOtherDanmaku.concat(parseNicoServerResponse(lNicoDanmaku))
-                                lOtherDanmaku = await danmuFilter(lOtherDanmaku, outsideFliter)
-                                ldanmu = lBiliDanmaku.concat(lOtherDanmaku)
-
                                 let info = JSON.parse(xhr.getResponseHeader('content-type').slice(25))
                                 resolve([
                                     ldanmu,
