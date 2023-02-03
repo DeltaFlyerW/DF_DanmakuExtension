@@ -71,6 +71,8 @@
         }
     ];
     let callbacks = {};
+    let loadedSegmentList = [];
+    let currentCid = null;
 
 
     (function pakkuXhrHook() {
@@ -147,6 +149,13 @@
                     link.href = this.pakku_url;
                     this.pakku_url = link.href;
                     let that = this;
+                    let cid = /oid=(\d+)/.exec(that.pakku_url)[1]
+                    console.log(currentCid,'/',cid)
+                    if (cid !== currentCid) {
+                        currentCid = cid
+                        console.log('cid changed,clear')
+                        loadedSegmentList = []
+                    }
                     if (this.pakku_load_callback || this.onreadystatechange !== null) {
                         send_msg_proxy(that.pakku_url, function (resp) {
                             if (!resp || !resp.data) return that.pakku_send(arg);
@@ -345,20 +354,19 @@
                         }
                         ldanmu = temp
                         if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                            //deprecated at 2022.12.16
                             window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
                             window.top.closure.danmakuPlayer.dmListStore.refresh()
                         } else {
+                            //add at 2022.12.16
                             window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
                         }
                         if (window.top.closure.danmakuScroll) {
                             window.top.closure.danmakuScroll.toinit()
                         }
                     };
-                    let loadedSegmentList = []
                     setInterval(
                         async function () {
-                            if (window.top.player) {
+                            if (window.top.player && currentCid) {
                                 let segmentIndex = Math.ceil((window.top.player.getCurrentTime() + 30) / 360)
                                 if (!loadedSegmentList.includes(segmentIndex)) {
                                     loadedSegmentList.push(segmentIndex)
@@ -428,7 +436,6 @@
                                     console.log(e)
                                     console.log(e.stack)
                                 }
-
                             }
                         }
                     }

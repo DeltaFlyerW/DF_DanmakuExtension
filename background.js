@@ -2,6 +2,7 @@ let defaultConfig = {
     debug: false,
     danmuRate: 2.1,
     nicoDanmuRate: 1,
+    animadRate: -1,
     loadNicoComment: true,
     loadNicoScript: true,
     translateNicoComment: true,
@@ -214,9 +215,11 @@ let [str, len, searchContent, searchPeriod, ignoreBili, nicoOnly, stringHash] = 
             if (!extensionSetting.nicoOnly) {
                 extensionSetting.nicoOnly = true
                 extensionSetting.ignoreBili = true
+                extensionSetting.animadRate = 0
             } else {
                 extensionSetting.nicoOnly = false
                 extensionSetting.ignoreBili = false
+                extensionSetting.animadRate = -1
             }
             console.log('extensionSetting.nicoOnly =', extensionSetting.nicoOnly)
         },
@@ -2728,10 +2731,9 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 if (!danmu.ctime) {
                     danmu.ctime = ctime
                 }
-                if (danmu.pool) {
+                if (danmu.idStr.length > 1) {
                     source['b'].elems.push(danmu)
                 } else {
-                    danmu.pool = 0
                     if (source.hasOwnProperty(danmu.idStr)) {
                         source[danmu.idStr].elems.push(danmu)
                     } else if (!danmu.idStr) {
@@ -2795,6 +2797,9 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             + '&cid=' + cid
         if (setting.nicoDanmuRate) {
             url += '&nico_danmaku_limit=' + Math.floor(ndanmu * setting.nicoDanmuRate)
+        }
+        if (setting.animadRate !== undefined && setting.animadRate !== -1) {
+            url += '&baha_danmaku_limit=' + Math.floor(ndanmu * setting.animadRate)
         }
         if (setting.translateNicoComment) {
             url += '&translate=1'
@@ -3447,7 +3452,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 
         messageHistory.push([request, sender])
         if (request.type === "ajax_hook") {
-            if (request.url.indexOf('.so') !== -1) {
+            if (request.url.indexOf('.so') !== -1 && request.url.indexOf('ps=120000') === -1) {
                 console.log(request.type, request);
                 let segmentIndex = /segment_index=(\d+)/.exec(request.url)
                 if (segmentIndex === null) {

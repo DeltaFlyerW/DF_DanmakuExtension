@@ -28,43 +28,37 @@ if (document.head) {
     let lastHref = null
     let lastDesc = null
     let currentCid = null
-    let runningDescParserList = []
     let passiveParserList = []
     let cacheUrls = []
 
-    async function getBiliVideoDuration(aid, cid, ipage = undefined) {
+    async function getBiliVideoDuration(aid, cid) {
         let pagelist = JSON.parse(await parse('https://api.bilibili.com/x/player/pagelist?aid=' + aid + '&jsonp=jsonp'))
-        let tDuration = null
+        let duration = null
+        let ipage
         for (let i = 0; i < pagelist.data.length; i++) {
             let page = pagelist.data[i]
             if (page.cid === parseInt(cid)) {
-                tDuration = page.duration
-                if (ipage === null) {
-                    ipage = i
-                }
+                duration = page.duration
+                ipage = i
             }
         }
-        if (tDuration === null) {
+        if (duration === null) {
             console.log('cid', cid, 'not in', pagelist)
         }
-        if (ipage === undefined) {
-            return tDuration
-        } else {
-            return [tDuration, ipage]
-        }
+        return [duration, ipage]
     }
 
     async function getDescInfo(cid) {
-        if (runningDescParserList.length !== 0) {
-            console.log('waiting for prev parser')
-            await new Promise(resolve => {
-                runningDescParserList.push({'cid': cid, callback: resolve})
-            })
-        } else {
-            console.log('first start', runningDescParserList)
-            runningDescParserList.push({'cid': cid})
+        for (let parser of passiveParserList) {
+            if (parser.type !== 'passive') {
+                console.log('waiting for prev parser')
+                return await new Promise(resolve => {
+                    passiveParserList.push({callback: resolve, type: 'active'})
+                    console.log('wait for desc', passiveParserList)
+                })
+            }
         }
-        console.log(lastHref, window.location.href, runningDescParserList)
+        console.log('parse desc', lastHref, window.location.href)
         if (window.location.href === lastHref && cid === currentCid) {
         } else {
             if (lastHref !== null) {
@@ -129,6 +123,7 @@ if (document.head) {
 
             let ssid, aid, duration
             let ipage = null
+
             if (/bangumi\/play/.exec(window.location.href)) {
                 let seasonInfo
                 if (cacheUrls['season']) {
@@ -186,6 +181,7 @@ if (document.head) {
                         }
                     }
                 }
+                duration = (await getBiliVideoDuration(aid, cid))[0]
             } else {
                 aid = document.querySelector('meta[itemprop="url"]')
                 aid = /(BV.*?)[\/?]/.exec(aid.getAttribute('content'))[1]
@@ -197,6 +193,9 @@ if (document.head) {
                     videoInfo = JSON.parse(await parse('https://api.bilibili.com/x/web-interface/view?aid=' + aid)).data
                 }
                 extraInfo.pubdate = videoInfo.pubdate
+                if (aid) {
+                    [duration, ipage] = await getBiliVideoDuration(aid, cid)
+                }
             }
             let mid = document.querySelector('*[id="v_upinfo"]')
 
@@ -207,35 +206,15 @@ if (document.head) {
             }
 
 
-            if (aid) {
-                [duration, ipage] = await getBiliVideoDuration(aid, cid, ipage)
-            }
             extraInfo.duration = duration
             extraInfo.cid = cid
             lastHref = window.location.href
             lastDesc = [aid, ssid, ipage, extraInfo]
         }
-
-
-        let nextParser = null
-
-        runningDescParserList = runningDescParserList.filter(parser => {
-            if (parser.cid === cid) {
-                if (parser.callback) {
-                    parser.callback()
-                }
-                return false
-            } else if (!nextParser && parser.callback) {
-                parser.callback()
-                nextParser = true
-                return false
-            } else return true
-        })
         passiveParserList.forEach(parser => {
             parser.callback(lastDesc)
         })
         passiveParserList = []
-        console.log('desc loaded, remaining count:', runningDescParserList.length, runningDescParserList)
         return lastDesc
     }
 
@@ -268,6 +247,9 @@ if (document.head) {
                                 resp: null
                             }, "*");
                             return
+                        }
+                        if(cid!==currentCid){
+                            lastDesc=null
                         }
                         let res = await getDescInfo(cid)
                         currentCid = cid
@@ -343,11 +325,9 @@ if (document.head) {
                         event.data.cid = lastDesc.cid
                     } else if (event.data.type === "actualSegment") {
                         if (!lastDesc) {
-                            if (!lastDesc) {
-                                await new Promise(resolve => {
-                                    passiveParserList.push({callback: resolve})
-                                })
-                            }
+                            await new Promise(resolve => {
+                                passiveParserList.push({callback: resolve, type: 'passive'})
+                            })
                         }
                         let [aid, ssid, ipage, extraInfo] = lastDesc
                         let desc = {
@@ -361,6 +341,7 @@ if (document.head) {
                         for (let key of Object.keys(desc)) {
                             event.data[key] = desc[key]
                         }
+                        console.log('actualSegment', event.data)
                     }
                     chrome.runtime.sendMessage(event.data);
                     let timeStamp = event.data.timeStamp
@@ -393,7 +374,7 @@ if (document.head) {
                     }
                     if (!lastDesc) {
                         await new Promise(resolve => {
-                            passiveParserList.push({callback: resolve})
+                            passiveParserList.push({callback: resolve, 'type': 'passive'})
                         })
                     }
                     if (lastDesc[3].youtube) {
