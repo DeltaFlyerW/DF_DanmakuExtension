@@ -2,7 +2,10 @@
     'use strict'
     if (XMLHttpRequest.prototype.pakku_open) return;
 
-
+    let setting = {}
+    postExtension("getSetting").then(function (result) {
+        setting = result.setting
+    })
     //postHook Listener
     window.addEventListener("message", function (event) {
             if (event.source !== window || !event.data || !event.data.type) return;
@@ -64,11 +67,17 @@
 
     let callbacksAfterDanmakuRequest = [
         () => {
-            if (console.log.__sentry_original__) {
+            while (console.log.__sentry_original__) {
                 console.log = console.log.__sentry_original__
             }
+            while (
+                Element.prototype.addEventListener.__sentry_original__
+                ) {
+                Element.prototype.addEventListener = Element.prototype.addEventListener.__sentry_original__
+            }
             console.log('disable sentry')
-        }
+        },
+        biliEvolvedPlugin
     ];
     let callbacks = {};
     let loadedSegmentList = [];
@@ -150,7 +159,7 @@
                     this.pakku_url = link.href;
                     let that = this;
                     let cid = /oid=(\d+)/.exec(that.pakku_url)[1]
-                    console.log(currentCid,'/',cid)
+                    console.log(currentCid, '/', cid)
                     if (cid !== currentCid) {
                         currentCid = cid
                         console.log('cid changed,clear')
@@ -367,11 +376,17 @@
                     setInterval(
                         async function () {
                             if (window.top.player && currentCid) {
-                                let segmentIndex = Math.ceil((window.top.player.getCurrentTime() + 30) / 360)
+                                let currentTime = window.top.player.getCurrentTime()
+                                let segmentIndex = Math.ceil((currentTime) / 360)
                                 if (!loadedSegmentList.includes(segmentIndex)) {
                                     loadedSegmentList.push(segmentIndex)
                                     console.log('postExtension("actualSegment")')
                                     await postExtension("actualSegment", {'segmentIndex': segmentIndex})
+                                }
+                                if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
+                                    loadedSegmentList.push(segmentIndex + 1)
+                                    console.log('postExtension("actualSegment")')
+                                    await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
                                 }
                             }
                         },
@@ -447,6 +462,316 @@
         }
         console.log(window.nanoWidgetsJsonp)
     })();
+
+    async function biliEvolvedPlugin() {
+        let i = 0, sideBar
+        if (document.querySelector('[id="custom-navbar-style"]') || document.querySelector('[id="auto-hide-sidebar"]')) {
+            while (!sideBar && i < 25) {
+                i += 1
+                sideBar = document.querySelector("body > div.be-settings > div.sidebar")
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+        }
+        if (!sideBar) {
+            sideBar = copySidebar()
+        }
+        console.log('sideBar', sideBar)
+        let htmlText = `
+                        <div title="加载本地弹幕" class="dfex-upload"><i class="be-icon" style="--size:26px;">
+                            <div class="custom-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920">
+                                    <path d="m1838.86 1451.576 81.14 81.37-361.566 361.566H361.566L0 1532.946l81.255-81.37 327.891 328.007h1101.708l328.006-328.007ZM962.333 25l500.285 500.285-81.14 81.37-361.795-361.681v1187.559H904.869V244.973L543.188 606.655l-81.14-81.37L962.333 25Z"
+                                          fill-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </i></div>
+                        <div title="绑定外站视频" class="dfex-bind"><i class="be-icon" style="--size:26px;">
+                            <div class="custom-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920">
+                                    <path d="M1866.003 351.563 1565.128 50.575c-69.46-67.652-180.932-67.426-248.923.565L906.23 461.116c-68.33 68.443-68.33 179.69.113 248.132l31.623 31.624 79.737-79.963-31.624-31.51c-24.282-24.396-24.282-64.038 0-88.433l409.977-409.977c24.508-24.395 64.828-24.17 89.675 0l299.859 299.972c24.734 25.186 24.847 65.619.564 90.014l-409.976 409.977c-24.508 24.282-64.15 24.282-88.546 0l-110.795-110.909 159.473-159.36-79.85-79.85-435.614 435.502-109.779-109.779c-32.866-33.656-76.8-52.292-123.67-52.63-43.596 1.694-92.273 18.296-126.156 52.178L51.377 1316.081c-68.442 68.442-68.442 179.69 0 248.132l301.553 301.553c34.108 34.108 79.059 51.275 124.01 51.275 44.95 0 89.9-17.167 124.122-51.275l409.976-409.977c33.77-33.882 52.405-78.607 52.066-126.042-.226-46.984-18.974-90.918-52.066-123.219l-30.494-30.494-79.85 79.85 30.946 30.945c11.86 11.633 18.41 27.106 18.523 43.595.113 16.942-6.664 33.092-18.974 45.516l-409.977 409.976c-23.492 23.492-64.94 23.492-88.433 0l-301.553-301.553c-11.746-11.746-18.183-27.444-18.183-44.273 0-16.715 6.437-32.414 18.183-44.16l409.977-409.976c12.197-12.31 28.235-19.087 45.063-19.087h.452c16.49.113 31.962 6.663 43.934 19.087l110.344 110.23-162.184 162.297 79.85 79.85 438.324-438.438 110.796 110.908c34.334 34.221 79.171 51.275 124.122 51.275 44.95 0 89.901-17.054 124.122-51.275l409.977-409.977c67.877-67.99 67.99-179.463 0-249.26"
+                                          fill-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </i></div>
+                        `
+        sideBar.insertAdjacentHTML('beforeend', htmlText);
+
+        function copySidebar() {
+            let translateX = setting.hideSidebar ? '-90' : '-50'
+
+
+            let sideBarHtml = `<style type="text/css">.be-settings {
+    line-height: normal;
+    font-size: 12px;
+    --panel-height: calc(100vh - 120px);
+}
+.be-settings > .sidebar {
+    position: fixed;
+    top: 50%;
+    z-index: 1002;
+    transform: translateX(calc(${translateX}% * var(--direction))) translateY(-50%);
+}
+body:not(.settings-panel-dock-right) .be-settings {
+    --direction: 1;
+}
+.be-settings > .sidebar > * {
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    width: 26px;
+    height: 26px;
+    padding: 8px;
+    box-sizing: content-box;
+    background-color: rgba(255, 255, 255, 0.6666666667);
+    border-radius: 50%;
+    position: relative;
+}
+.be-settings > .sidebar > *:not(:last-child) {
+    margin-bottom: 26px;
+}
+.be-settings > .sidebar > *::after {
+    content: "";
+    width: 140%;
+    height: 140%;
+    position: absolute;
+    top: -20%;
+    left: -20%;
+    background: transparent;
+}
+.be-settings > .sidebar > * .be-icon {
+    font-size: 26px;
+    color: #888;
+    fill: #888;
+    transition: fill 0.3s ease-out;
+}
+.be-settings > .sidebar > *:hover {
+    transform: translateX(calc(60% * var(--direction))) scale(1.1);
+    background-color: #fff;
+}
+.be-settings > .sidebar > *:hover .be-icon {
+    color: #222;
+    fill: #222;
+}
+.be-settings > .sidebar > *.open {
+    transform: translateX(calc(100% * var(--direction))) scale(1.5);
+    opacity: 0;
+}
+body:not(.settings-panel-dock-right) .be-settings > .sidebar {
+    left: 0;
+}
+body:not(.settings-panel-dock-right) .settings-panel-popup .settings-panel-content .sidebar {
+    border-right: 1px solid rgba(136, 136, 136, 0.1333333333);
+}
+body.settings-panel-dock-right {
+    --direction: -1;
+}
+body.settings-panel-dock-right .be-settings > .sidebar {
+    right: 0;
+}
+body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .sidebar {
+    order: 1;
+    border-left: 1px solid rgba(136, 136, 136, 0.1333333333);
+}
+</style>
+<div class="be-settings">
+    <div class="sidebar">
+        
+    </div>
+</div>
+`
+            document.body.insertAdjacentHTML('beforeend', sideBarHtml)
+            let sideBar = document.body.querySelector('[class="sidebar"]')
+            if (!setting.hideSidebar) {
+                let html =
+                    `
+                    <div title="完全收起侧边栏" id="dfex-hide-sidebar"><i class="be-icon" style="--size:26px;">
+                        <div class="custom-icon">
+                            <svg fill="#000000" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M8.70710678,12 L19.5,12 C19.7761424,12 20,12.2238576 20,12.5 C20,12.7761424 19.7761424,13 19.5,13 L8.70710678,13 L11.8535534,16.1464466 C12.0488155,16.3417088 12.0488155,16.6582912 11.8535534,16.8535534 C11.6582912,17.0488155 11.3417088,17.0488155 11.1464466,16.8535534 L7.14644661,12.8535534 C6.95118446,12.6582912 6.95118446,12.3417088 7.14644661,12.1464466 L11.1464466,8.14644661 C11.3417088,7.95118446 11.6582912,7.95118446 11.8535534,8.14644661 C12.0488155,8.34170876 12.0488155,8.65829124 11.8535534,8.85355339 L8.70710678,12 L8.70710678,12 Z M4,5.5 C4,5.22385763 4.22385763,5 4.5,5 C4.77614237,5 5,5.22385763 5,5.5 L5,19.5 C5,19.7761424 4.77614237,20 4.5,20 C4.22385763,20 4,19.7761424 4,19.5 L4,5.5 Z"/>
+                            </svg>
+                        </div>
+                    </i></div>
+                    `
+                sideBar.insertAdjacentHTML('beforeend', html)
+                let hideButton = sideBar.querySelector('[id="dfex-hide-sidebar"]')
+                hideButton.addEventListener("click", function () {
+                    hideButton.title = '已收起'
+                    postExtension("editSetting", {'key': 'hideSidebar', 'value': true})
+                })
+                sideBar.appendChild(hideButton)
+            }
+            return sideBar
+        }
+
+        function popupWindow() {
+            let html = `
+<div id="dfex-window">
+    <style type="text/css">
+        #dfex-window {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 320px;
+            height: 200px;
+            background-color: white;
+            box-shadow: rgb(51, 51, 51) 0px 0px 10px 0px;
+            z-index: 99999;
+        }
+
+        #dfex-close {
+            position: absolute;
+            right: 2px;
+            top: 2px;
+            background-color: transparent;
+            border: none;
+            outline: none;
+            cursor: pointer;
+        }
+        
+        #dfex-center {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            width: 90%;
+            height: 90%;
+        }
+    </style>
+    <div id="dfex-center">
+    </div>
+    <button id="dfex-close">
+            <svg width="20px" height="20px" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="#000000" d="M764.288 214.592 512 466.88 259.712 214.592a31.936 31.936 0 0 0-45.12 45.12L466.752 512 214.528 764.224a31.936 31.936 0 1 0 45.12 45.184L512 557.184l252.288 252.288a31.936 31.936 0 0 0 45.12-45.12L557.12 512.064l252.288-252.352a31.936 31.936 0 1 0-45.12-45.184z"/></svg>
+    </button>
+</div>
+`
+            document.body.insertAdjacentHTML('beforeend', html)
+            let window = document.querySelector('[id="dfex-window"]')
+            window.querySelector('[id="dfex-close"]').addEventListener('click', function () {
+                document.body.removeChild(window)
+            })
+            window.center = window.querySelector('[id="dfex-center"]')
+            document.body.appendChild(window);
+            return window
+        }
+
+        (function uploadButton() {
+            let button = sideBar.querySelector('[class="dfex-upload"]')
+
+            function handle() {
+                let html = `<label for="dfex-upload-input">请选择XML弹幕文件:</label><input type="file" accept="application/xml" id="dfex-upload-input">
+<p  id="dfex-upload-result"></p>`
+                let popup = popupWindow()
+                popup.center.innerHTML = html
+                popup.center.querySelector('[id="dfex-upload-input"]')
+                    .addEventListener('change', (event) => {
+                        const file = event.target.files[0];
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                            let ldanmu = (await postExtension('parseXmlContent', {
+                                'content': event.target.result
+                            })).ldanmu
+                            let idPool = new Set()
+                            for (let danmu of ldanmu) {
+                                idPool.add(danmu.idStr)
+                            }
+                            let oldanmu = []
+                            let overwirteCount = 0
+                            let currentCount = window.top.closure.danmakuPlayer.dmListStore.allDm.length
+                            for (let danmu of window.top.closure.danmakuPlayer.dmListStore.allDm) {
+                                if (!idPool.has(danmu.dmid)) {
+                                    oldanmu.push(danmu)
+                                } else {
+                                    overwirteCount += 1
+                                }
+                            }
+                            window.top.closure.danmakuPlayer.dmListStore.allDm = oldanmu
+                            window.top.closure.loadDanmu(ldanmu)
+                            popup.center.querySelector('[id="dfex-upload-result"]').textContent =
+                                '\n' +
+                                `从文件中读取到${ldanmu.length}条弹幕\n` +
+                                ((overwirteCount !== 0) ? `因id重复覆盖了现有的${currentCount}条弹幕中的${overwirteCount}条\n` : '') +
+                                `总弹幕数:${ldanmu.length + currentCount - overwirteCount}`
+                        };
+                        reader.readAsText(file);
+                    });
+            }
+
+            button.addEventListener('click', handle)
+            sideBar.appendChild(button)
+        })();
+
+        (function bindButton() {
+            let button = sideBar.querySelector('[class="dfex-bind"]')
+
+            async function handle() {
+                let bindDict = {}
+                let html = `<style>
+                            #dfex-bind-input, #dfex-bind-confirm, #dfex-bind-error, #dfex-bind-result {
+                              margin-top: 10px;
+                              margin-bottom: 10px;
+                               float: left;
+                              margin-right: 10px;
+                            }</style>
+                            <p>请输入需要绑定的网址:</p>
+                            <input type="url"  id="dfex-bind-input" style="width: 80%">
+                            <input type="button" id="dfex-bind-confirm" value="确定"/>
+                            <p id="dfex-bind-error" style="width: 80%">    </p>
+                            <div id="dfex-bind-result"></div>`
+                let popup = popupWindow()
+
+                popup.insertAdjacentHTML('beforeend',
+                    `
+                    <style>#dfex-bind-submit {
+                        position: absolute;
+                        right: 8px;
+                        bottom: 8px;
+                        /*border: none;*/
+                        outline: none;
+                        cursor: pointer;
+                        display: none;
+                    }</style>
+                    <input type="button" value="提交" id="dfex-bind-submit"/>
+                    `
+                )
+
+                popup.center.innerHTML = html
+                let input = popup.center.querySelector('input[id="dfex-bind-input"]')
+                let confirm = popup.center.querySelector('input[id="dfex-bind-confirm"]')
+                let submit = popup.querySelector('input[id="dfex-bind-submit"]')
+                let result = popup.center.querySelector('div[id="dfex-bind-result"]')
+                let error = popup.center.querySelector('p[id="dfex-bind-error"]')
+                confirm.addEventListener('click', async function () {
+                    error.textContent = ''
+                    let bindResult = await postExtension('parseBindInfo', {content: input.value})
+                    let keys = Object.keys(bindResult)
+                    confirm.value = '继续'
+                    if (keys.length === 0) {
+                        error.textContent = "错误: 未识别到匹配的网址"
+                    } else {
+                        for (let key of keys) {
+                            bindDict[key] = bindResult[key]
+                        }
+                        input.value = ''
+                        let resultText = ''
+                        for (let key of Object.keys(bindDict)) {
+                            resultText += `<p>${key}: ${bindDict[key]}</p>`
+                        }
+                        result.innerHTML = resultText
+                        submit.style.display = "block"
+                    }
+                })
+                submit.addEventListener('click', async function () {
+                    postExtension('bindVideo', {'bindDict': bindDict})
+                    if (bindDict.youtube) {
+                        buildLoadPage(bindDict.youtube)
+                    }
+                })
+            }
+
+            button.addEventListener('click', handle)
+            sideBar.appendChild(button)
+        })();
+    }
 
     let youtubeManager = {
         youtubeId: null,
@@ -1177,14 +1502,6 @@
             return buildLoadPageV1(youtubeId)
         }
 
-    }
-
-
-    window.previewDanmaku = function (xml) {
-        postExtension('previewDanmaku', {
-            'content': xml,
-        })
-        console.log('添加成功,请刷新视频')
     }
 
     console.log("pakku ajax: hook set");

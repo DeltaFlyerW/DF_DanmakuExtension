@@ -1,6 +1,6 @@
 {
   "name": "DF的弹幕扩展",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "description": "该扩展程序致力于改善弹幕体验XD",
   "author": "DeltaFlyer",
   "permissions": [
@@ -22,7 +22,7 @@
   },
   "content_security_policy": "default-src 'self'; frame-src ; img-src data: ; object-src 'self'; connect-src http://127.0.0.1:800 https://*.delflare505.win:800 http://152.32.146.234:400 https://delflare505.win:800 http://*.bilibili.com https://*.bilibili.com https://*.biliplus.com   https://*.gamer.com.tw http://*.gamer.com.tw; style-src 'self' 'unsafe-inline' ",
   "background": {
-    "page": "background.html"
+    "page": "html/background.html"
   },
   "content_scripts": [
     {
@@ -47,7 +47,7 @@
       "all_frames": true
     }
   ],
-  "options_page": "option.html",
+  "options_page": "html/option.html",
   "web_accessible_resources": [
     "plugin/fflate.min.js",
     "filterWorker.js",

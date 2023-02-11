@@ -13,6 +13,7 @@ let defaultConfig = {
     bindedCid: {},
     uidFilter: -1,
     blockHighlightDanmaku: true,
+    hideSideBar: false,
     filterRule: [
         {
             string: ['⎛', '[oh', '[前方', '走好', '————'],
@@ -3260,20 +3261,6 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
 
         }
     }();
-    window.previewDanmaku = function (xml, cid = null) {
-        let dldanmu
-        if (!cid) {
-            dldanmu = ldldanmu[ldldanmu.length - 1]
-        } else {
-            for (let d of ldldanmu) {
-                if (d.cid === cid) {
-                    dldanmu = d
-                }
-            }
-        }
-        dldanmu.ldanmu = [{'cid': 0, ldanmu: xml2danmu(xml)}]
-        dldanmu.timestamp = null
-    }
 
     function buildCallback(sendResponseAsync, cid) {
         return [
@@ -3424,9 +3411,43 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 mergeDescDanmaku(loadDanmakuCallback, argv.segmentIndex, argv.aid, argv.cid, argv.ipage, argv.extraInfo.duration, ndanmu, 0, argv.extraInfo)
             }
         }]
+}();
+
+
+function bindVideo(params) {
+    let url
+    if (params.ss) {
+        url = `/bind_series/?ss=${params.ss}&lss=`
+        let lss = []
+        for (let bind of Object.values(params.bindDict)) {
+            lss.push(bind)
+        }
+        url += JSON.stringify(lss)
+        ldldanmu = []
+    } else {
+        url = '/bindVideoAid?aid=' + params.aid
+        let sites = []
+        for (let site of Object.keys(params.bindDict)) {
+            let argvs = params.bindDict[site].split(':')
+            let value = {
+                'site': site,
+                'id': argvs[0]
+            }
+            if (argvs.length > 1) {
+                for (let argv of argvs) {
+                    let [k, v] = argv.split('=')
+                    value[k] = v
+                }
+            }
+            sites.push(value)
+        }
+        bindAid.push(params.aid.toString())
+        url += '&sites=' + JSON.stringify(sites)
+        ldldanmu = []
+    }
+    xhrGet(danmuServerDomain + url)
 }
 
-();
 
 let messageHistory = []
 
@@ -3498,7 +3519,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
             return sendResponseAsync({setting: realSetting, detail: configDetail})
         } else if (request.type === "editSetting") {
             extensionSetting[request.key] = request.value
-            localStorage['extensionSetting'] = JSON.stringify(extensionSetting)
+            localStorage['extensionSetting'] = JSON.stringify(realSetting)
             return sendResponseAsync('success')
         } else if (request.type === "parse") {
             if (request.url.startsWith('server::')) {
@@ -3518,9 +3539,10 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
                 last: last,
                 latest: latest
             })
-        } else if (request.type === 'previewDanmaku') {
-            console.log(request)
-            previewDanmaku(request.content, request.cid)
+        } else if (request.type === 'parseXmlContent') {
+            return sendResponseAsync({ldanmu: xml2danmu(request.content)})
+        } else if (request.type === 'bindVideo') {
+            bindVideo(request)
         } else {
             if (request.type.endsWith('_response')) return
             console.log('unknown message', request)

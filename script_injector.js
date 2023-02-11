@@ -48,6 +48,70 @@ if (document.head) {
         return [duration, ipage]
     }
 
+    function parseDescBind(content) {
+        let extraInfo = {}
+        let youtubeUrl = /\.youtube\.com\/watch\?[Vv]=([0-9a-zA-Z\-_]+)/.exec(content)
+        if (youtubeUrl === null) {
+            youtubeUrl = /youtu\.be\/([_0-9a-zA-Z]+)/.exec(content)
+        }
+        if (youtubeUrl !== null) {
+            youtubeUrl = youtubeUrl[1]
+            console.log('Found YoutubeUrl:' + youtubeUrl)
+            extraInfo['youtube'] = youtubeUrl
+        }
+        let nicoinfo = /([^a-zA-Z]|^)([sS][mM]\d+)([^a-zA-Z]|$)/.exec(content)
+        if (nicoinfo !== null) {
+            nicoinfo = nicoinfo[2]
+        }
+        if (nicoinfo !== null) {
+            nicoinfo = nicoinfo.toLowerCase()
+            console.log('Found NicoUrl:' + nicoinfo)
+            extraInfo['niconico'] = nicoinfo
+        }
+        let twitchVOD = /https:\/\/www.twitch.tv\/videos\/(\d+)/.exec(content)
+        if (twitchVOD !== null) {
+            console.log('Found twitchVOD:' + twitchVOD[1])
+            extraInfo['twitch'] = twitchVOD[1]
+        }
+        return extraInfo
+    }
+
+    function parseBindParams(content) {
+        let paramText = ''
+        let params = new URLSearchParams(content)
+        let paramList = [
+            'indexOffset',
+            'offset',
+            'live',
+            'translate'
+        ]
+        for (let param of paramList) {
+            if (params.has(param)) {
+                paramText += `:${param}=${params.get(param)}`
+            }
+        }
+        return paramText
+    }
+
+    function parseBangumiBind(content) {
+        let prefixDict = {
+            'ss': 'bilibili',
+            'ep': 'bilibili',
+            'so': 'niconico',
+            'sn': 'animad'
+        }
+
+        for (let prefix of Object.keys(prefixDict)) {
+            let match = RegExp('([^a-zA-Z]|^)(' + prefix + '\d+)([^a-zA-Z]|$)').exec(content)
+            if (match) {
+                let matchResult = match[2]
+                let result = {}
+                result[prefixDict[prefix]] = matchResult
+                return result
+            }
+        }
+    }
+
     async function getDescInfo(cid) {
         for (let parser of passiveParserList) {
             if (parser.type !== 'passive') {
@@ -71,15 +135,7 @@ if (document.head) {
                 if (info === null) {
                     console.log('Desc not found')
                 } else {
-                    let youtubeUrl = /\.youtube\.com\/watch\?[Vv]=([0-9a-zA-Z\-_]*)/.exec(info.innerText)
-                    if (youtubeUrl === null) {
-                        youtubeUrl = /youtu\.be\/([_0-9a-zA-Z]*)/.exec(info.innerText)
-                    }
-                    if (youtubeUrl !== null) {
-                        youtubeUrl = youtubeUrl[1]
-                        console.log('Found YoutubeUrl:' + youtubeUrl)
-                        extraInfo['youtube'] = youtubeUrl
-                    }
+                    extraInfo = parseDescBind(desc.innerText)
                     let lnico = info.querySelectorAll('a[target=_blank][href^="//acg.tv/sm"]');
                     let nico = lnico[0]
                     let nicoinfo = null
@@ -94,23 +150,6 @@ if (document.head) {
                             nicoinfo = /([sS][mM]\d+)/.exec(nicoinfo)
                             nico.setAttribute('href', 'https://www.nicovideo.jp/watch/' + nicoinfo[1])
                         }
-                    }
-
-                    if (nicoinfo === null) {
-                        nicoinfo = /([sS][mM]\d+)/.exec(info.innerText)
-                        if (nicoinfo !== null) {
-                            nicoinfo = nicoinfo[1]
-                        }
-                    }
-                    if (nicoinfo !== null) {
-                        nicoinfo = nicoinfo.toLowerCase()
-                        console.log('Found NicoUrl:' + nicoinfo)
-                        extraInfo['niconico'] = nicoinfo
-                    }
-                    let twitchVOD = /https:\/\/www.twitch.tv\/videos\/(\d+)/.exec(info.innerText)
-                    if (twitchVOD !== null) {
-                        console.log('Found twitchVOD:' + twitchVOD[1])
-                        extraInfo['twitch'] = twitchVOD[1]
                     }
                 }
                 // }
@@ -220,12 +259,6 @@ if (document.head) {
 
 
     let skipCid = {}
-    chrome.runtime.onMessage.addListener(function (message) {
-        console.log(message)
-        if (message.cid === currentCid) {
-            window.postMessage(message)
-        }
-    })
 
     window.addEventListener("message", async function (event) {
             if (event.source !== window) return;
@@ -248,8 +281,8 @@ if (document.head) {
                             }, "*");
                             return
                         }
-                        if(cid!==currentCid){
-                            lastDesc=null
+                        if (cid !== currentCid) {
+                            lastDesc = null
                         }
                         let res = await getDescInfo(cid)
                         currentCid = cid
@@ -317,46 +350,75 @@ if (document.head) {
 
                 } else if (event.data.type === 'cacheUrl') {
                     cacheUrls[event.data.urlType] = event.data
-                } else if (event.data.type === 'queryDesc') {
-
-                }
-                if (event.data.source === 'DFex' && !event.data.type.endsWith('_response')) {
-                    if (event.data.type === 'previewDanmaku') {
-                        event.data.cid = lastDesc.cid
-                    } else if (event.data.type === "actualSegment") {
-                        if (!lastDesc) {
-                            await new Promise(resolve => {
-                                passiveParserList.push({callback: resolve, type: 'passive'})
-                            })
-                        }
-                        let [aid, ssid, ipage, extraInfo] = lastDesc
-                        let desc = {
-                            aid: aid,
-                            cid: extraInfo.cid,
-                            href: window.location.href,
-                            extraInfo: extraInfo,
-                            ssid: ssid,
-                            ipage: ipage,
-                        }
-                        for (let key of Object.keys(desc)) {
-                            event.data[key] = desc[key]
-                        }
-                        console.log('actualSegment', event.data)
+                } else if (event.data.type === 'parseBindInfo') {
+                    //lastDesc = [aid, ssid, ipage, extraInfo]
+                    let result
+                    if (lastDesc[1]) {
+                        result = parseBangumiBind(event.data.content)
+                    } else {
+                        result = parseDescBind(event.data.content)
                     }
-                    chrome.runtime.sendMessage(event.data);
-                    let timeStamp = event.data.timeStamp
-                    await new Promise(resolve => {
-                        function handle(resp, sender, sendResponse) {
-                            if (resp.type !== event.data.type + '_response' || resp.timeStamp !== timeStamp)
-                                return;
-                            chrome.runtime.onMessage.removeListener(handle)
-                            window.postMessage(resp, "*");
-                            resolve()
+                    let params = parseBindParams(event.data.content)
+                    for (let key of Object.keys(result)) {
+                        result[key] += params
+                    }
+                    window.postMessage({
+                        type: 'parseBindInfo_response',
+                        timeStamp: event.data.timeStamp,
+                        content: result
+                    }, "*");
+                } else if (event.data.type === 'getSetting') {
+                    window.postMessage({
+                        type: 'getSetting_response',
+                        timeStamp: event.data.timeStamp,
+                        content: {
+                            setting: setting
                         }
+                    }, "*");
+                } else if (event.data.type)
+                    if (event.data.source === 'DFex' && !event.data.type.endsWith('_response')) {
+                        if (event.data.type === 'previewDanmaku') {
+                            event.data.cid = lastDesc.cid
+                        } else if (event.data.type === "actualSegment") {
+                            if (!lastDesc) {
+                                await new Promise(resolve => {
+                                    passiveParserList.push({callback: resolve, type: 'passive'})
+                                })
+                            }
+                            let [aid, ssid, ipage, extraInfo] = lastDesc
+                            let desc = {
+                                aid: aid,
+                                cid: extraInfo.cid,
+                                href: window.location.href,
+                                extraInfo: extraInfo,
+                                ssid: ssid,
+                                ipage: ipage,
+                            }
+                            for (let key of Object.keys(desc)) {
+                                event.data[key] = desc[key]
+                            }
+                            console.log('actualSegment', event.data)
+                        } else if (event.data.type === 'bindVideo') {
+                            if (lastDesc[1]) {
+                                event.data.ss = lastDesc[1]
+                            } else {
+                                event.data.aid = lastDesc[0]
+                            }
+                        }
+                        chrome.runtime.sendMessage(event.data);
+                        let timeStamp = event.data.timeStamp
+                        await new Promise(resolve => {
+                            function handle(resp, sender, sendResponse) {
+                                if (resp.type !== event.data.type + '_response' || resp.timeStamp !== timeStamp)
+                                    return;
+                                chrome.runtime.onMessage.removeListener(handle)
+                                window.postMessage(resp, "*");
+                                resolve()
+                            }
 
-                        chrome.runtime.onMessage.addListener(handle)
-                    })
-                }
+                            chrome.runtime.onMessage.addListener(handle)
+                        })
+                    }
             }
         }
         ,
