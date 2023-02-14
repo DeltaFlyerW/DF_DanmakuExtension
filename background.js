@@ -3441,8 +3441,9 @@ function bindVideo(params) {
             }
             sites.push(value)
         }
+        let parts = [sites]
         bindAid.push(params.aid.toString())
-        url += '&sites=' + JSON.stringify(sites)
+        url += '&sites=' + JSON.stringify(parts)
         ldldanmu = []
     }
     xhrGet(danmuServerDomain + url)
@@ -3679,6 +3680,7 @@ async function xhrGet(url, timeout = null, header = null, retry = 0, returnXhr =
         )
     } catch (e) {
         console.log('XhrError=', retry, '/', xhr, e)
+        serverResolve(url)
         if (danmuServerDomain === 'https://delflare505.win:800') danmuServerDomain = 'http://152.32.146.234:400'
         if (retry < 1) {
             return (await xhrGet(url, timeout, header, retry + 1))
@@ -3717,8 +3719,8 @@ async function loadServerProtobuf(url, timeout = null, header = null, retry = 0,
             (resolve) => {
                 xhr.onreadystatechange = async () => {
                     if (xhr.readyState === 4) {
+                        serverResolve(url)
                         if (xhr.status === 200) {
-                            serverResolve(url)
                             try {
                                 let ldanmu = window.proto_seg.decode(new Uint8Array(xhr.response)).elems;
                                 let info = JSON.parse(xhr.getResponseHeader('content-type').slice(25))
@@ -3732,7 +3734,6 @@ async function loadServerProtobuf(url, timeout = null, header = null, retry = 0,
                             }
 
                         } else if (xhr.status === 304) {
-                            serverResolve(url)
                             resolve(null)
                         } else {
                             console.log('XhrError=', retry, '/', xhr)
@@ -3748,6 +3749,7 @@ async function loadServerProtobuf(url, timeout = null, header = null, retry = 0,
             }
         )
     } catch (e) {
+        serverResolve(url)
         console.log('XhrError=', retry, '/', xhr)
         if (retry < 3) {
             return (await loadServerProtobuf(url, timeout, header, retry + 1))

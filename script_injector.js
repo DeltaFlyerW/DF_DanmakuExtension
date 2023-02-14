@@ -257,7 +257,11 @@ if (document.head) {
         return lastDesc
     }
 
-
+    chrome.runtime.onMessage.addListener(function (message) {
+        if (message.cid === currentCid) {
+            window.postMessage(message)
+        }
+    })
     let skipCid = {}
 
     window.addEventListener("message", async function (event) {
