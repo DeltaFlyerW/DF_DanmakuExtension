@@ -259,7 +259,7 @@ if (document.head) {
 
     chrome.runtime.onMessage.addListener(function (message) {
         if (message.cid === currentCid) {
-            window.postMessage(message)
+            window.postMessage(message,'*')
         }
     })
     let skipCid = {}
@@ -377,6 +377,14 @@ if (document.head) {
                         timeStamp: event.data.timeStamp,
                         content: {
                             setting: setting
+                        }
+                    }, "*");
+                }else if (event.data.type === 'queryDesc') {
+                    window.postMessage({
+                        type: 'queryDesc_response',
+                        timeStamp: event.data.timeStamp,
+                        content: {
+                            lastDesc: lastDesc
                         }
                     }, "*");
                 } else if (event.data.type)

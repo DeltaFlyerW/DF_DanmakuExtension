@@ -661,39 +661,68 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 let html = `<label for="dfex-upload-input">请选择XML弹幕文件:</label><input type="file" accept="application/xml" id="dfex-upload-input">
 <p  id="dfex-upload-result"></p>`
                 let popup = popupWindow()
+
                 popup.center.innerHTML = html
-                popup.center.querySelector('[id="dfex-upload-input"]')
-                    .addEventListener('change', (event) => {
-                        const file = event.target.files[0];
-                        const reader = new FileReader();
-                        reader.onload = async (event) => {
-                            let ldanmu = (await postExtension('parseXmlContent', {
-                                'content': event.target.result
-                            })).ldanmu
-                            let idPool = new Set()
-                            for (let danmu of ldanmu) {
-                                idPool.add(danmu.idStr)
-                            }
-                            let oldanmu = []
-                            let overwirteCount = 0
-                            let currentCount = window.top.closure.danmakuPlayer.dmListStore.allDm.length
-                            for (let danmu of window.top.closure.danmakuPlayer.dmListStore.allDm) {
-                                if (!idPool.has(danmu.dmid)) {
-                                    oldanmu.push(danmu)
-                                } else {
-                                    overwirteCount += 1
-                                }
-                            }
-                            window.top.closure.danmakuPlayer.dmListStore.allDm = oldanmu
-                            window.top.closure.loadDanmu(ldanmu)
-                            popup.center.querySelector('[id="dfex-upload-result"]').textContent =
-                                '\n' +
-                                `从文件中读取到${ldanmu.length}条弹幕\n` +
-                                ((overwirteCount !== 0) ? `因id重复覆盖了现有的${currentCount}条弹幕中的${overwirteCount}条\n` : '') +
-                                `总弹幕数:${ldanmu.length + currentCount - overwirteCount}`
-                        };
-                        reader.readAsText(file);
-                    });
+                let input = popup.center.querySelector('[id="dfex-upload-input"]')
+                input.addEventListener('change', (event) => {
+                    const file = event.target.files[0];
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        let ldanmu = (await postExtension('parseXmlContent', {
+                            'content': event.target.result
+                        })).ldanmu
+                        popup.center.querySelector('[id="dfex-upload-result"]').textContent =
+                            '\n' +
+                            `从文件中读取到${ldanmu.length}条弹幕\n`
+                    };
+                    reader.readAsText(file);
+                });
+
+                function loadFileDanmaku(reload = false) {
+                    const file = input.files[0];
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        let ldanmu = (await postExtension('parseXmlContent', {
+                            'content': event.target.result
+                        })).ldanmu
+                        if (reload) {
+                            window.top.closure.danmakuPlayer.dmListStore.allDm = []
+                        }
+                        window.top.closure.loadDanmu(ldanmu)
+                        popup.center.querySelector('[id="dfex-upload-result"]').textContent =
+                            '\n' +
+                            `从文件中读取到${ldanmu.length}条弹幕\n` +
+                            `总弹幕数:${window.top.closure.danmakuPlayer.dmListStore.allDm.length}`
+                    };
+                    reader.readAsText(file);
+                }
+
+                let bottomHtml = `
+                    <style>#dfex-upload-reload {
+                        position: absolute;
+                        right: 8px;
+                        bottom: 8px;
+                        outline: none;
+                        cursor: pointer;
+                    }</style>
+                    <input type="button" value="重载" id="dfex-upload-reload" title="清空现有弹幕后加载"/>
+                    <style>#dfex-upload-append {
+                        position: absolute;
+                        right: 40px;
+                        bottom: 8px;
+                        outline: none;
+                        cursor: pointer;
+                    }</style>
+                    <input type="button" value="追加" id="dfex-upload-append" title="同现有弹幕一起加载"/>
+                    `
+
+                popup.insertAdjacentHTML('beforeend', bottomHtml)
+                popup.querySelector('[id="dfex-upload-reload"]').addEventListener('click', () => {
+                    loadFileDanmaku(true)
+                })
+                popup.querySelector('[id="dfex-upload-append"]').addEventListener('click', () => {
+                    loadFileDanmaku(false)
+                })
             }
 
             button.addEventListener('click', handle)
@@ -704,6 +733,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
             let button = sideBar.querySelector('[class="dfex-bind"]')
 
             async function handle() {
+                let lastDesc = (await postExtension("queryDesc")).lastDesc
                 let bindDict = {}
                 let html = `<style>
                             #dfex-bind-input, #dfex-bind-confirm, #dfex-bind-error, #dfex-bind-result {
@@ -719,8 +749,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             <div id="dfex-bind-result"></div>`
                 let popup = popupWindow()
 
-                popup.insertAdjacentHTML('beforeend',
-                    `
+                let bottomHtml = `
                     <style>#dfex-bind-submit {
                         position: absolute;
                         right: 8px;
@@ -732,6 +761,23 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     }</style>
                     <input type="button" value="提交" id="dfex-bind-submit"/>
                     `
+                if (lastDesc[3].youtube) {
+                    bottomHtml +=
+                        `
+                        <style>
+                            #dfex-bind-youtube-chat {
+                            position: absolute;
+                            right: 40px;
+                            bottom: 8px;
+                            outline: none;
+                            cursor: pointer;
+                        }</style>
+                        <input type="button" id="dfex-bind-youtube-chat" value="油管回放弹幕" title="加载直播弹幕"/>
+                        `
+                }
+
+                popup.insertAdjacentHTML('beforeend',
+                    bottomHtml
                 )
 
                 popup.center.innerHTML = html
@@ -740,6 +786,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 let submit = popup.querySelector('input[id="dfex-bind-submit"]')
                 let result = popup.center.querySelector('div[id="dfex-bind-result"]')
                 let error = popup.center.querySelector('p[id="dfex-bind-error"]')
+                let youtubeChat = popup.querySelector('input[id="dfex-bind-youtube-chat"]')
                 confirm.addEventListener('click', async function () {
                     error.textContent = ''
                     let bindResult = await postExtension('parseBindInfo', {content: input.value})
@@ -762,9 +809,14 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 })
                 submit.addEventListener('click', async function () {
                     postExtension('bindVideo', {'bindDict': bindDict})
+                    result.innerHTML = '<p>已提交</p>'
                     if (bindDict.youtube) {
                         buildLoadPage(bindDict.youtube)
                     }
+                })
+                youtubeChat.addEventListener("click", async function () {
+                    input.value = "https://www.youtube.com/watch?v=" + lastDesc[3].youtube + "&live=1"
+                    confirm.click()
                 })
             }
 
