@@ -130,6 +130,9 @@ if (document.head) {
             }
             let extraInfo = {}
             let desc = document.querySelector('div[class^="desc-info"]')
+            if (desc === null) {
+                desc = document.querySelector('div[class^="basic-desc-info"]')
+            }
             if (desc !== null) {
                 let info = desc.querySelector('span')
                 if (info === null) {
@@ -222,9 +225,17 @@ if (document.head) {
                 }
                 duration = (await getBiliVideoDuration(aid, cid))[0]
             } else {
-                aid = document.querySelector('meta[itemprop="url"]')
-                aid = /(BV.*?)[\/?]/.exec(aid.getAttribute('content'))[1]
-                aid = bv2av(aid)
+                let match = /BV([a-zA-Z0-9]+)/.exec(location.href)
+                if (match) {
+                    let bvid = match[0]
+                    aid = bv2av(bvid)
+                } else if (document.querySelector('meta[itemprop="url"]')) {
+                    let bvid = /(BV.*?)[\/?]/.exec(document.querySelector('meta[itemprop="url"]')
+                        .getAttribute('content'))[1]
+                    aid = bv2av(bvid)
+                } else if (/av([a-zA-Z0-9]+)/.exec(location.href)) {
+                    aid = parseInt(/av([a-zA-Z0-9]+)/.exec(location.href)[1])
+                }
                 let videoInfo
                 if (cacheUrls['view']) {
                     videoInfo = JSON.parse(cacheUrls['view'].data).data
@@ -259,7 +270,7 @@ if (document.head) {
 
     chrome.runtime.onMessage.addListener(function (message) {
         if (message.cid === currentCid) {
-            window.postMessage(message,'*')
+            window.postMessage(message, '*')
         }
     })
     let skipCid = {}
@@ -379,7 +390,7 @@ if (document.head) {
                             setting: setting
                         }
                     }, "*");
-                }else if (event.data.type === 'queryDesc') {
+                } else if (event.data.type === 'queryDesc') {
                     window.postMessage({
                         type: 'queryDesc_response',
                         timeStamp: event.data.timeStamp,
@@ -437,7 +448,8 @@ if (document.head) {
         false
     );
     if (
-        window.location.href.indexOf('https://www.bilibili.com/video')) {
+        window.location.href.indexOf('https://www.bilibili.com/video')
+        || window.location.href.indexOf("https://www.bilibili.com/list/watchlater?bvid=")) {
     }
     {
         document.addEventListener("DOMNodeInserted", async (msg) => {

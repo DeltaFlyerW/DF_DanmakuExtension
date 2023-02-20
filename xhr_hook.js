@@ -1548,7 +1548,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
             }
         }
 
-        if (document.querySelector('[class="comment-m-v1"]') !== null) {
+        if (document.querySelector('[class^="nav-sort"]') !== null) {
             return buildLoadPageV2(youtubeId)
         } else {
             return buildLoadPageV1(youtubeId)

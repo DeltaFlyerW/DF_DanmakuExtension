@@ -3474,20 +3474,24 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 
         messageHistory.push([request, sender])
         if (request.type === "ajax_hook") {
-            if (request.url.indexOf('.so') !== -1 && request.url.indexOf('ps=120000') === -1) {
+            if (request.url.indexOf('.so') !== -1 ) {
                 console.log(request.type, request);
-                let segmentIndex = /segment_index=(\d+)/.exec(request.url)
-                if (segmentIndex === null) {
-                    return sendResponseAsync({
-                        data: null,
-                        type: request.type + '_response',
-                        arg: request.arg,
-                    });
-                } else {
-                    segmentIndex = segmentIndex[1]
+                let ldanmu=[],ndanmu
+                if(request.url.indexOf('ps=120000') === -1){
+                }else{
+                    let segmentIndex = /segment_index=(\d+)/.exec(request.url)
+                    if (segmentIndex === null) {
+                        return sendResponseAsync({
+                            data: null,
+                            type: request.type + '_response',
+                            arg: request.arg,
+                        });
+                    } else {
+                        segmentIndex = segmentIndex[1]
+                    }
+                    [ldanmu, ndanmu] = await danmuHookResponse(request.url, segmentIndex, request.cid, request.aid, request.ipage,
+                        request.ssid, request.extraInfo, request.loadDanmu, sendResponseAsync)
                 }
-                let [ldanmu, ndanmu] = await danmuHookResponse(request.url, segmentIndex, request.cid, request.aid, request.ipage,
-                    request.ssid, request.extraInfo, request.loadDanmu, sendResponseAsync)
                 return sendResponseAsync({
                     data: ldanmu,
                     type: request.type + '_response',
