@@ -1,0 +1,9 @@
+.idea
+*.bak
+.dist
+dist/dfex_tamper.js
+package.json
+tamperMonkey.js
+dist/local.js
+build.py
+BUILD.bat

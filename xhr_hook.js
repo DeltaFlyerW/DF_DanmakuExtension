@@ -8,9 +8,9 @@
     })
     //postHook Listener
     window.addEventListener("message", function (event) {
-            if (event.source !== window || !event.data || !event.data.type) return;
-            // console.log(event.data)
-            if (event.data.type === 'replaceLoadPage') {
+        if (event.source !== window || !event.data || !event.data.type) return;
+        switch (event.data.type) {
+            case 'replaceLoadPage': {
                 console.log('replaceLoadPage')
                 let loadPage = buildLoadPage(event.data.youtube)
                 if (!loadPage) return;
@@ -26,18 +26,23 @@
                         this.originLoadPage(i, e)
                     }
                 }
+                break
             }
-            if (event.data.type && event.data.type === "pakku_ajax_response") {
+            case "pakku_ajax_response": {
                 callbacks[event.data.arg](event.data.resp);
                 delete callbacks[event.data.arg]
+                break
             }
-            if (event.data.type && event.data.type === "load_danmaku" && event.origin !== 'https://message.bilibili.com') {
+            case"load_danmaku": {
                 window.top.closure.loadDanmu(event.data.ldanmu)
+                break
+            }
+            case "load_comment_art": {
+                loadNicoCommentArt(event.data.ldanmu)
+                break
             }
         }
-        ,
-        false
-    );
+    }, false);
 
     async function postExtension(messageType, data, hasCallback = true) {
         let timeStamp = new Date().getTime();
@@ -46,39 +51,29 @@
         data.timeStamp = timeStamp
         data.source = 'DFex'
         data.hasCallback = hasCallback
-        window.postMessage(
-            data
-            , "*");
+        window.postMessage(data, "*");
         if (hasCallback) {
             return await new Promise((resolve) => {
-                    let handle = (event) => {
-                        if (event.source === window && event.data
-                            && event.data.type === messageType + '_response'
-                            && event.data.timeStamp === timeStamp) {
-                            window.removeEventListener('message', handle)
-                            resolve(event.data.content)
-                        }
+                let handle = (event) => {
+                    if (event.source === window && event.data && event.data.type === messageType + '_response' && event.data.timeStamp === timeStamp) {
+                        window.removeEventListener('message', handle)
+                        resolve(event.data.content)
                     }
-                    window.addEventListener("message", handle, false);
                 }
-            )
+                window.addEventListener("message", handle, false);
+            })
         }
     }
 
-    let callbacksAfterDanmakuRequest = [
-        () => {
-            while (console.log.__sentry_original__) {
-                console.log = console.log.__sentry_original__
-            }
-            while (
-                Element.prototype.addEventListener.__sentry_original__
-                ) {
-                Element.prototype.addEventListener = Element.prototype.addEventListener.__sentry_original__
-            }
-            console.log('disable sentry')
-        },
-        biliEvolvedPlugin
-    ];
+    let callbacksAfterDanmakuRequest = [biliEvolvedPlugin, () => {
+        while (console.log.__sentry_original__) {
+            console.log = console.log.__sentry_original__
+        }
+        while (Element.prototype.addEventListener.__sentry_original__) {
+            Element.prototype.addEventListener = Element.prototype.addEventListener.__sentry_original__
+        }
+        console.log('disable sentry')
+    },];
     let callbacks = {};
     let loadedSegmentList = [];
     let currentCid = null;
@@ -136,18 +131,13 @@
             async function send_msg_proxy(arg, callback, type = "pakku_ajax_request") {
                 callbacks[arg] = callback;
                 window.postMessage({
-                    type: type,
-                    arg: arg,
-                    loadDanmu: await hasLoadDanmu()
+                    type: type, arg: arg, loadDanmu: await hasLoadDanmu()
                 }, "*");
             }
 
             return function (arg) {
 
-                if (
-                    this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1
-                    && this.pakku_url.indexOf('data.bilibili.com') === -1
-                ) {
+                if (this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1 && this.pakku_url.indexOf('data.bilibili.com') === -1) {
                     while (callbacksAfterDanmakuRequest.length !== 0) {
                         let callback = callbacksAfterDanmakuRequest.pop()
                         callback()
@@ -188,11 +178,8 @@
                             });
 
                             if (that.responseType === 'arraybuffer') {
-                                if (resp.data instanceof Uint8Array)
-                                    that.response = uint8array_to_arraybuffer(resp.data);
-                                else if (resp.data instanceof Object) // uint8arr object representation {0: ord, 1: ord, ...}
-                                    that.response = byte_object_to_arraybuffer(resp.data);
-                                else // maybe str
+                                if (resp.data instanceof Uint8Array) that.response = uint8array_to_arraybuffer(resp.data); else if (resp.data instanceof Object) // uint8arr object representation {0: ord, 1: ord, ...}
+                                    that.response = byte_object_to_arraybuffer(resp.data); else // maybe str
                                     that.response = str_to_arraybuffer(resp.data);
                                 that.responseURL = 'file:'
                             } else {
@@ -205,10 +192,8 @@
                             that.responseURL = that.pakku_url
                             console.log("pakku ajax: got tampered response for", that.pakku_url);
                             that.pakku_load_callback = that.pakku_load_callback || [];
-                            if (that.onreadystatechange)
-                                that.pakku_load_callback.push(that.onreadystatechange);
-                            if (that.onload)
-                                that.pakku_load_callback.push(that.onload);
+                            if (that.onreadystatechange) that.pakku_load_callback.push(that.onreadystatechange);
+                            if (that.onload) that.pakku_load_callback.push(that.onload);
                             if (that.pakku_load_callback.length > 0) {
                                 for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
                             }
@@ -260,11 +245,9 @@
                     })
                 } else {
                     let cacheUrlList = [{
-                        type: 'season',
-                        pattern: 'season?ep_id'
+                        type: 'season', pattern: 'season?ep_id'
                     }, {
-                        type: 'view',
-                        pattern: 'view?aid='
+                        type: 'view', pattern: 'view?aid='
                     }]
                     let url = this.pakku_url
                     for (let cache of cacheUrlList) {
@@ -272,10 +255,7 @@
                             this.pakku_addEventListener('readystatechange', function (s) {
                                 if (4 === s.target.readyState) {
                                     window.postMessage({
-                                        type: 'cacheUrl',
-                                        url: url,
-                                        urlType: cache.type,
-                                        data: s.target.response,
+                                        type: 'cacheUrl', url: url, urlType: cache.type, data: s.target.response,
                                     }, "*");
                                 }
                             })
@@ -298,8 +278,7 @@
             }
         }
 
-        if (window.location.href.indexOf('https://www.bilibili.com/bangumi') === -1
-            && window.location.href.indexOf('https://www.bilibili.com/video') === -1) {
+        if (window.location.href.indexOf('https://www.bilibili.com/bangumi') === -1 && window.location.href.indexOf('https://www.bilibili.com/video') === -1) {
             return;
         }
         try {
@@ -319,8 +298,7 @@
         let widgetsJsonp = eval(' window.top.' + widgetsJsonpString)
         if (!window.top.closure) {
             window.top.closure = {
-                danmakuPlayer: null,
-                danmakuScroll: null
+                danmakuPlayer: null, danmakuScroll: null
             }
             for (let key of Object.keys(window.top.closure)) {
                 Object.defineProperty(window.top.closure, key, {
@@ -330,93 +308,96 @@
                         if (callback) {
                             callback()
                         }
-                    },
-                    get: function () {
+                    }, get: function () {
                         return window.top.closure['_' + key]
                     }
                 })
             }
         }
         widgetsJsonp.pakku_push = widgetsJsonp.push
-        let injectList = [
-            {
-                keyword: 'initDanmaku()',
-                replaceList: [
-                    [',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this)']
-                ],
-                callback: function () {
-                    window.top.closure.loadDanmu = function (ldanmu) {
-                        console.log('loadDanmu', ldanmu)
-                        let temp = []
-                        for (let danmu of ldanmu) {
-                            temp.push({
-                                color: danmu.color,
-                                date: danmu.ctime,
-                                mode: danmu.mode,
-                                size: danmu.fontsize,
-                                stime: danmu.progress,
-                                text: danmu.content,
-                                uhash: danmu.midHash,
-                                weight: danmu.weight ? danmu.weight : 10,
-                                dmid: danmu.id,
-                            })
-                        }
-                        ldanmu = temp
-                        if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                            window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
-                            window.top.closure.danmakuPlayer.dmListStore.refresh()
-                        } else {
-                            //add at 2022.12.16
-                            window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
-                        }
-                        if (window.top.closure.danmakuScroll) {
-                            window.top.closure.danmakuScroll.toinit()
-                        }
-                    };
-                    setInterval(
-                        async function () {
-                            if (window.top.player && currentCid) {
-                                let currentTime = window.top.player.getCurrentTime()
-                                let segmentIndex = Math.ceil((currentTime) / 360)
-                                if (!loadedSegmentList.includes(segmentIndex)) {
-                                    loadedSegmentList.push(segmentIndex)
-                                    console.log('postExtension("actualSegment")')
-                                    await postExtension("actualSegment", {'segmentIndex': segmentIndex})
-                                }
-                                if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
-                                    loadedSegmentList.push(segmentIndex + 1)
-                                    console.log('postExtension("actualSegment")')
-                                    await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
-                                }
+        let injectList = [{
+            keyword: 'initDanmaku()',
+            replaceList: [[',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this)']],
+            callback: function () {
+                window.top.closure.loadDanmu = function (ldanmu) {
+                    console.log('loadDanmu', ldanmu)
+                    let temp = []
+
+                    function hookAttr(obj, property) {
+                        obj["_" + property] = obj[property]
+                        Object.defineProperty(obj, property, {
+                            set: function (value) {
+                                debugger; // trigger the debugger when the value is set
+                                this["_" + property] = value;
+                            }, get: function () {
+                                return this["_" + property];
                             }
-                        },
-                        1000
-                    )
-                }
-            },
-            {
-                keyword: 'firstPb',
-                replaceList: [
-                    ['this.allDM=', '\nwindow.top.closure.danmakuPlayer=this.player,console.log(this),this.allDM=']
-                ],
-                callback: function () {
-                    window.top.closure.loadDanmu = function (ldanmu) {
-                        console.log('loadDanmu', ldanmu)
-                        window.top.closure.danmakuPlayer.danmaku.loadPb.appendDm(ldanmu)
-                        if (window.top.closure.danmakuScroll) {
-                            window.top.closure.danmakuScroll.toinit()
+                        });
+                    }
+
+                    for (let danmu of ldanmu) {
+                        let obj = {
+                            attr: 0,
+                            color: danmu.color,
+                            date: danmu.ctime,
+                            mode: danmu.mode,
+                            size: danmu.fontsize,
+                            stime: danmu.progress,
+                            text: danmu.content,
+                            uhash: danmu.midHash,
+                            weight: danmu.weight ? danmu.weight : 8,
+                            dmid: danmu.id.toString(),
+                        }
+                        // hookAttr(obj, "attr")
+                        temp.push(obj)
+                    }
+
+
+                    ldanmu = temp
+                    if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                        window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                        window.top.closure.danmakuPlayer.dmListStore.refresh()
+                    } else {
+                        //add at 2022.12.16
+                        window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
+                    }
+                    if (window.top.closure.danmakuScroll) {
+                        window.top.closure.danmakuScroll.toinit()
+                    }
+                };
+                setInterval(async function () {
+                    if (window.top.player && currentCid) {
+                        let currentTime = window.top.player.getCurrentTime()
+                        let segmentIndex = Math.ceil((currentTime) / 360)
+                        if (!loadedSegmentList.includes(segmentIndex)) {
+                            loadedSegmentList.push(segmentIndex)
+                            console.log('postExtension("actualSegment")')
+                            await postExtension("actualSegment", {'segmentIndex': segmentIndex})
+                        }
+                        if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
+                            loadedSegmentList.push(segmentIndex + 1)
+                            console.log('postExtension("actualSegment")')
+                            await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
                         }
                     }
+                }, 1000)
+            }
+        }, {
+            keyword: 'firstPb',
+            replaceList: [['this.allDM=', '\nwindow.top.closure.danmakuPlayer=this.player,console.log(this),this.allDM=']],
+            callback: function () {
+                window.top.closure.loadDanmu = function (ldanmu) {
+                    console.log('loadDanmu', ldanmu)
+                    window.top.closure.danmakuPlayer.danmaku.loadPb.appendDm(ldanmu)
+                    if (window.top.closure.danmakuScroll) {
+                        window.top.closure.danmakuScroll.toinit()
+                    }
                 }
-            },
-            {
-                keyword: '弹幕列表填充中',
-                replaceList: [
-                    ['this.danmaku.style.display="block",',
-                        'this.danmaku.style.display = "block",window.top.closure.danmakuScroll=this,']
-                ]
-            },
-        ]
+            }
+        }, {
+            keyword: '弹幕列表填充中',
+            replaceList: [['this.danmaku.style.display="block",', 'this.danmaku.style.display = "block",window.top.closure.danmakuScroll=this,']]
+        },]
 
         widgetsJsonp.push = function (obj) {
             for (let prop in obj[1]) {
@@ -444,9 +425,7 @@
                                     inject.callback()
                                 }
                                 try {
-                                    window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=`
-                                        + injectedFunction
-                                    )
+                                    window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=` + injectedFunction)
                                 } catch (e) {
                                     console.log(e)
                                     console.log(e.stack)
@@ -462,6 +441,19 @@
         }
         console.log(window.nanoWidgetsJsonp)
     })();
+
+    async function parse(url, json = false) {
+        let res = await postExtension('parse', {url: url})
+        while (!res) {
+            await sleep(2)
+            res = await postExtension('parse', {url: url})
+        }
+        if (json) {
+            return JSON.parse(res)
+        } else {
+            return res
+        }
+    }
 
     async function biliEvolvedPlugin() {
         let i = 0, sideBar
@@ -500,7 +492,8 @@
             let translateX = setting.hideSidebar ? '-90' : '-50'
 
 
-            let sideBarHtml = `<style type="text/css">.be-settings {
+            let sideBarHtml = `<style type="text/css">
+.be-settings {
     line-height: normal;
     font-size: 12px;
     --panel-height: calc(100vh - 120px);
@@ -582,8 +575,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
             document.body.insertAdjacentHTML('beforeend', sideBarHtml)
             let sideBar = document.body.querySelector('[class="sidebar"]')
             if (!setting.hideSidebar) {
-                let html =
-                    `
+                let html = `
                     <div title="完全收起侧边栏" id="dfex-hide-sidebar"><i class="be-icon" style="--size:26px;">
                         <div class="custom-icon">
                             <svg fill="#000000" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -671,9 +663,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         let ldanmu = (await postExtension('parseXmlContent', {
                             'content': event.target.result
                         })).ldanmu
-                        popup.center.querySelector('[id="dfex-upload-result"]').textContent =
-                            '\n' +
-                            `从文件中读取到${ldanmu.length}条弹幕\n`
+                        popup.center.querySelector('[id="dfex-upload-result"]').textContent = '\n' + `从文件中读取到${ldanmu.length}条弹幕\n`
                     };
                     reader.readAsText(file);
                 });
@@ -689,10 +679,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             window.top.closure.danmakuPlayer.dmListStore.allDm = []
                         }
                         window.top.closure.loadDanmu(ldanmu)
-                        popup.center.querySelector('[id="dfex-upload-result"]').textContent =
-                            '\n' +
-                            `从文件中读取到${ldanmu.length}条弹幕\n` +
-                            `总弹幕数:${window.top.closure.danmakuPlayer.dmListStore.allDm.length}`
+                        popup.center.querySelector('[id="dfex-upload-result"]').textContent = '\n' + `从文件中读取到${ldanmu.length}条弹幕\n` + `总弹幕数:${window.top.closure.danmakuPlayer.dmListStore.allDm.length}`
                     };
                     reader.readAsText(file);
                 }
@@ -762,8 +749,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     <input type="button" value="提交" id="dfex-bind-submit"/>
                     `
                 if (lastDesc[3].youtube) {
-                    bottomHtml +=
-                        `
+                    bottomHtml += `
                         <style>
                             #dfex-bind-youtube-chat {
                             position: absolute;
@@ -776,9 +762,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         `
                 }
 
-                popup.insertAdjacentHTML('beforeend',
-                    bottomHtml
-                )
+                popup.insertAdjacentHTML('beforeend', bottomHtml)
 
                 popup.center.innerHTML = html
                 let input = popup.center.querySelector('input[id="dfex-bind-input"]')
@@ -825,6 +809,62 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
         })();
     }
 
+    let loadNicoCommentArt = (function loadNicoCommentArt() {
+        function buildCanvas() {
+            // Get a reference to the existing element in the document
+            let existingElement = document.querySelector('video');
+            let html = `
+<style>
+  #nico-canvas,
+  #nico-container
+   {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    z-index: 999;
+  }
+</style>
+<div id="nico-container">
+<canvas id="nico-canvas" width="1920" height="1080""></canvas>
+</div>
+`
+            existingElement.parentElement.insertAdjacentHTML('beforeend', html);
+            let result = existingElement.parentElement.querySelector("#nico-canvas")
+            return result
+        }
+
+        async function initScript() {
+            let result = await parse("extension::plugin/niconicomments.min.js")
+            let script = document.createElement('script');
+            script.textContent = result
+            document.body.appendChild(script)
+        }
+
+        let niconiComments = null
+
+        return async function (comments) {
+            if (!niconiComments) {
+                let canvasElem = buildCanvas()
+                console.log('buildNicoCanvas', canvasElem)
+                await initScript()
+                niconiComments = new NiconiComments(canvasElem, [], {
+                    mode: 'default', keepCA: true
+                });
+                setInterval(() => {
+                    niconiComments.drawCanvas(Math.floor(window.player.getCurrentTime() * 100))
+                }, 10);
+            }
+            niconiComments.addComments(...comments)
+            console.log('addCommentArt', niconiComments, comments)
+        };
+    })();
+
     let youtubeManager = {
         youtubeId: null,
         created: false,
@@ -843,26 +883,11 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
             await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
         }
 
-        async function parse(url, json = false) {
-            let res = await postExtension('parse', {url: url})
-            while (!res) {
-                await sleep(2)
-                res = await postExtension('parse', {url: url})
-            }
-            if (json) {
-                return JSON.parse(res)
-            } else {
-                return res
-            }
-        }
-
 
         let createElement = function (sHtml) {
             // 创建一个可复用的包装元素
-            let recycled = document.createElement('div'),
-                // 创建标签简易匹配
-                reg = /^<([a-zA-Z]+)(?=\s|\/>|>)[\s\S]*>$/,
-                // 某些元素HTML标签必须插入特定的父标签内，才能产生合法元素
+            let recycled = document.createElement('div'), // 创建标签简易匹配
+                reg = /^<([a-zA-Z]+)(?=\s|\/>|>)[\s\S]*>$/, // 某些元素HTML标签必须插入特定的父标签内，才能产生合法元素
                 // 另规避：ie7-某些元素innerHTML只读
                 // 创建这些需要包装的父标签hash
                 hash = {
@@ -896,14 +921,12 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 do {
                     sHtml = '<' + tagName + '>' + sHtml + '</' + tagName + '>';
                     deep++;
-                }
-                while (tagName = hash[tagName]);
+                } while (tagName = hash[tagName]);
                 element.innerHTML = sHtml;
                 // 根据迭代层次截取被包装的子元素
                 do {
                     element = element.removeChild(element.firstChild);
-                }
-                while (--deep > -1);
+                } while (--deep > -1);
                 // 最终返回需要创建的元素
                 return element;
             }
@@ -961,39 +984,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     }
                 }
 
-                let shtml = format('<div class="list-item reply-wrap " data-id="0" data-index="' + iComment + '">\n' +
-                    '    <div class="user-face">\n' +
-                    '        <a href="https://www.youtube.com/channel/{channel}" target="_blank" data-usercard-mid="{channel}">\n' +
-                    '            <div class="bili-avatar">\n' +
-                    '                <img width="48" height="48" class="bili-avatar-img bili-avatar-face bili-avatar-img-radius"\n' +
-                    '                     src="{photo}"\n' +
-                    '                     alt="">\n' +
-                    '\n' +
-                    '\n' +
-                    '                <span class="bili-avatar-icon"></span>\n' +
-                    '            </div>\n' +
-                    '        </a>\n' +
-                    '    </div>\n' +
-                    '    <div class="con ">\n' +
-                    '        <div class="user">\n' +
-                    '            <a data-usercard-mid="{channel}" href="https://www.youtube.com/channel/{channel}"\n' +
-                    '               target="_blank" class="name"\n' +
-                    '               style="color">{author}\n' +
-                    '            </a>\n' +
-                    '\n' +
-                    '        </div>\n' +
-                    '        <p class="text">{text}</p>\n' +
-                    '        <div class="info">\n' +
-                    '            <span class="time">{time}</span>\n' +
-                    '            <span class="like ">\n' +
-                    '                <i></i>\n' +
-                    '                <span>{votes}</span>\n' +
-                    '            </span>\n' +
-                    '        </div>\n' +
-                    '        <div class="reply-box"></div>\n' +
-                    '        <div class="paging-box"></div>\n' +
-                    '    </div>\n' +
-                    '</div>', comment)
+                let shtml = format('<div class="list-item reply-wrap " data-id="0" data-index="' + iComment + '">\n' + '    <div class="user-face">\n' + '        <a href="https://www.youtube.com/channel/{channel}" target="_blank" data-usercard-mid="{channel}">\n' + '            <div class="bili-avatar">\n' + '                <img width="48" height="48" class="bili-avatar-img bili-avatar-face bili-avatar-img-radius"\n' + '                     src="{photo}"\n' + '                     alt="">\n' + '\n' + '\n' + '                <span class="bili-avatar-icon"></span>\n' + '            </div>\n' + '        </a>\n' + '    </div>\n' + '    <div class="con ">\n' + '        <div class="user">\n' + '            <a data-usercard-mid="{channel}" href="https://www.youtube.com/channel/{channel}"\n' + '               target="_blank" class="name"\n' + '               style="color">{author}\n' + '            </a>\n' + '\n' + '        </div>\n' + '        <p class="text">{text}</p>\n' + '        <div class="info">\n' + '            <span class="time">{time}</span>\n' + '            <span class="like ">\n' + '                <i></i>\n' + '                <span>{votes}</span>\n' + '            </span>\n' + '        </div>\n' + '        <div class="reply-box"></div>\n' + '        <div class="paging-box"></div>\n' + '    </div>\n' + '</div>', comment)
 
                 return createElement(shtml)
             }
@@ -1006,9 +997,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 if (youtubeManager.endpoint) {
                     url += '&context=' + encodeURIComponent(JSON.stringify([youtubeManager.endpoint, youtubeManager.ytcfg]))
                 }
-                let ret = await parse(
-                    url, true
-                )
+                let ret = await parse(url, true)
                 console.log(ret)
                 let dComment = ret[0]
                 youtubeManager.endpoint = ret[1]
@@ -1030,9 +1019,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             }
                             let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
                             url += '&context=' + encodeURIComponent(JSON.stringify([replyButton.continuationEndpoint, youtubeManager.ytcfg]))
-                            ret = await parse(
-                                url, true
-                            )
+                            ret = await parse(url, true)
                             let dComment = ret[0]
 
                             for (let j = 0; j < dComment.length; j++) {
@@ -1088,8 +1075,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     }
                     youtubeManager.showed = true
                 } else {
-                    if (o.loading
-                    ) return;
+                    if (o.loading) return;
                 }
 
                 ``
@@ -1204,9 +1190,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     if (youtubeManager.endpoint) {
                         url += '&context=' + encodeURIComponent(JSON.stringify([youtubeManager.endpoint, youtubeManager.ytcfg]))
                     }
-                    let ret = await parse(
-                        url, true
-                    )
+                    let ret = await parse(url, true)
                     console.log(ret)
                     youtubeManager.endpoint = ret[1]
                     if (ret[2]) youtubeManager.ytcfg = ret[2]
@@ -1227,16 +1211,12 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     let rootIndex = Number(/root=(\d+)/.exec(url)[1])
                     let root = youtubeManager.commentList[rootIndex]
                     let pageInfo = {
-                        "count": root.comment,
-                        "size": pageSize,
-                        "num": Math.ceil(root.count / pageSize)
+                        "count": root.comment, "size": pageSize, "num": Math.ceil(root.count / pageSize)
                     }
                     while (root.replyList.length < page * pageSize && root.continuationEndpoint !== null) {
                         let url = 'server::/youtube_comment?youtubeid=' + youtubeManager.youtubeId
                         url += '&context=' + encodeURIComponent(JSON.stringify([root.continuationEndpoint, youtubeManager.ytcfg]))
-                        let ret = await parse(
-                            url, true
-                        )
+                        let ret = await parse(url, true)
                         ret[0].forEach(it => {
                             it.rpid = root.replyList.length
                             root.replyList.push(it)
@@ -1245,16 +1225,12 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     }
                     return buildSublist(root.replyList.slice(page * pageSize - pageSize, page * pageSize), pageInfo)
 
-                } else
-                    throw "unknownType"
+                } else throw "unknownType"
             }
 
             function buildMainContent(commentList, isEnd) {
                 let response = {
-                    "code": 0,
-                    "message": "0",
-                    "ttl": 1,
-                    "data": {
+                    "code": 0, "message": "0", "ttl": 1, "data": {
                         "cursor": {
                             "is_begin": false,
                             "prev": 0,
@@ -1335,12 +1311,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             "image_enhance_frame": ""
                         },
                         "nameplate": {
-                            "nid": 0,
-                            "name": "",
-                            "image": "",
-                            "image_small": "",
-                            "level": "",
-                            "condition": ""
+                            "nid": 0, "name": "", "image": "", "image_small": "", "level": "", "condition": ""
                         },
                         "official_verify": {"type": -1, "desc": ""},
                         "fans_detail": null,
@@ -1350,11 +1321,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         "nft_interaction": null
                     },
                     "content": {
-                        "message": "",
-                        "plat": 0,
-                        "device": "",
-                        "members": [],
-                        "max_line": 6
+                        "message": "", "plat": 0, "device": "", "members": [], "max_line": 6
                     },
                     "replies": null,
                     "assist": 0,
@@ -1457,12 +1424,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             "image_enhance_frame": ""
                         },
                         "nameplate": {
-                            "nid": 0,
-                            "name": "",
-                            "image": "",
-                            "image_small": "",
-                            "level": "",
-                            "condition": ""
+                            "nid": 0, "name": "", "image": "", "image_small": "", "level": "", "condition": ""
                         },
                         "official_verify": {"type": -1, "desc": ""},
                         "fans_detail": null,
@@ -1472,11 +1434,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         "nft_interaction": null
                     },
                     "content": {
-                        "message": "",
-                        "plat": 0,
-                        "device": "",
-                        "members": [],
-                        "max_line": 6
+                        "message": "", "plat": 0, "device": "", "members": [], "max_line": 6
                     },
                     "replies": null,
                     "assist": 0,

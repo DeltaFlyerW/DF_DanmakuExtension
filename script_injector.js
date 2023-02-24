@@ -79,12 +79,7 @@ if (document.head) {
     function parseBindParams(content) {
         let paramText = ''
         let params = new URLSearchParams(content)
-        let paramList = [
-            'indexOffset',
-            'offset',
-            'live',
-            'translate'
-        ]
+        let paramList = ['indexOffset', 'offset', 'live', 'translate']
         for (let param of paramList) {
             if (params.has(param)) {
                 paramText += `:${param}=${params.get(param)}`
@@ -95,10 +90,7 @@ if (document.head) {
 
     function parseBangumiBind(content) {
         let prefixDict = {
-            'ss': 'bilibili',
-            'ep': 'bilibili',
-            'so': 'niconico',
-            'sn': 'animad'
+            'ss': 'bilibili', 'ep': 'bilibili', 'so': 'niconico', 'sn': 'animad'
         }
 
         for (let prefix of Object.keys(prefixDict)) {
@@ -276,180 +268,159 @@ if (document.head) {
     let skipCid = {}
 
     window.addEventListener("message", async function (event) {
-            if (event.source !== window) return;
-            if (event.data.type) {
-                if (event.data.type === "pakku_ajax_request") {
+        if (event.source !== window) return;
+        if (event.data.type) {
+            if (event.data.type === "pakku_ajax_request") {
+                try {
+                    if (setting.blockHighlightDanmaku) {
+                        var styleSheet = document.createElement("style")
+                        styleSheet.innerText = '.b-danmaku-high-icon {display: none;}'
+                        document.head.appendChild(styleSheet)
+                    }
+                    let cid = /oid=(\d+)/.exec(event.data.arg)[1]
+                    if (skipCid === cid) {
+                        console.log('Ignore cid', skipCid)
+                        window.postMessage({
+                            type: "pakku_ajax_response", arg: event.data.arg, resp: null
+                        }, "*");
+                        return
+                    }
+                    if (cid !== currentCid) {
+                        lastDesc = null
+                    }
+                    let res = await getDescInfo(cid)
+                    currentCid = cid
+                    let aid, ssid, ipage, extraInfo, expectedDanmuNum
+                    [aid, ssid, ipage, extraInfo] = res
+                    let message = {
+                        type: "ajax_hook",
+                        url: event.data.arg,
+                        aid: aid,
+                        cid: cid,
+                        href: window.location.href,
+                        extraInfo: extraInfo,
+                        ssid: ssid,
+                        ipage: ipage,
+                        expectedDanmuNum: expectedDanmuNum,
+                        loadDanmu: event.data.loadDanmu
+                    }
                     try {
-                        if (setting.blockHighlightDanmaku) {
-                            var styleSheet = document.createElement("style")
-                            styleSheet.innerText =
-                                '.b-danmaku-high-icon {display: none;}'
-                            document.head.appendChild(styleSheet)
-                        }
-                        let cid = /oid=(\d+)/.exec(event.data.arg)[1]
-                        if (skipCid === cid) {
-                            console.log('Ignore cid', skipCid)
-                            window.postMessage({
-                                type: "pakku_ajax_response",
-                                arg: event.data.arg,
-                                resp: null
-                            }, "*");
-                            return
-                        }
-                        if (cid !== currentCid) {
-                            lastDesc = null
-                        }
-                        let res = await getDescInfo(cid)
-                        currentCid = cid
-                        let aid, ssid, ipage, extraInfo, expectedDanmuNum
-                        [aid, ssid, ipage, extraInfo] = res
-                        let message = {
-                            type: "ajax_hook",
-                            url: event.data.arg,
-                            aid: aid,
-                            cid: cid,
-                            href: window.location.href,
-                            extraInfo: extraInfo,
-                            ssid: ssid,
-                            ipage: ipage,
-                            expectedDanmuNum: expectedDanmuNum,
-                            loadDanmu: event.data.loadDanmu
-                        }
-                        try {
-                            message['block'] = JSON.parse(localStorage.bilibili_player_settings).block
-                        } catch (e) {
-                            console.log(e)
-                        }
-                        chrome.runtime.sendMessage(message);
-
-                        await new Promise(resolve => {
-                            function handle(resp, sender, sendResponse) {
-
-                                if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55) || resp.cid !== currentCid)
-                                    return;
-                                chrome.runtime.onMessage.removeListener(handle)
-                                if (resp.data !== null && resp.ndanmu !== null) {
-                                    console.log('GotDanmuFromDFex', resp.ndanmu)
-                                    if (setting.debug) {
-                                        let danmuSwitch = document.querySelector('div[class="bilibili-player-video-danmaku-switch bui bui-switch"]')
-                                        console.log('danmuSwitch', danmuSwitch)
-                                        if (danmuSwitch) {
-                                            danmuSwitch.style.visibility = "hidden";
-                                        }
-                                    }
-                                }
-                                let message = {
-                                    type: "pakku_ajax_response",
-                                    arg: event.data.arg,
-                                    resp: resp
-                                }
-                                console.log('postMessage', message)
-                                window.postMessage(message, "*");
-                                resolve()
-                            }
-
-                            chrome.runtime.onMessage.addListener(handle)
-
-                        })
-
+                        message['block'] = JSON.parse(localStorage.bilibili_player_settings).block
                     } catch (e) {
                         console.log(e)
-                        window.postMessage({
-                            type: "pakku_ajax_response",
-                            arg: event.data.arg,
-                            resp: null
-                        }, "*");
-                        throw e
                     }
+                    chrome.runtime.sendMessage(message);
+
+                    await new Promise(resolve => {
+                        function handle(resp, sender, sendResponse) {
+
+                            if (resp.type !== 'ajax_hook_response' || resp.href.slice(55) !== event.data.arg.slice(55) || resp.cid !== currentCid) return;
+                            chrome.runtime.onMessage.removeListener(handle)
+                            if (resp.data !== null && resp.ndanmu !== null) {
+                                console.log('GotDanmuFromDFex', resp.ndanmu)
+                                if (setting.debug) {
+                                    let danmuSwitch = document.querySelector('div[class="bilibili-player-video-danmaku-switch bui bui-switch"]')
+                                    console.log('danmuSwitch', danmuSwitch)
+                                    if (danmuSwitch) {
+                                        danmuSwitch.style.visibility = "hidden";
+                                    }
+                                }
+                            }
+                            let message = {
+                                type: "pakku_ajax_response", arg: event.data.arg, resp: resp
+                            }
+                            console.log('postMessage', message)
+                            window.postMessage(message, "*");
+                            resolve()
+                        }
+
+                        chrome.runtime.onMessage.addListener(handle)
+
+                    })
+
+                } catch (e) {
+                    console.log(e)
+                    window.postMessage({
+                        type: "pakku_ajax_response", arg: event.data.arg, resp: null
+                    }, "*");
+                    throw e
+                }
 
 
-                } else if (event.data.type === 'cacheUrl') {
-                    cacheUrls[event.data.urlType] = event.data
-                } else if (event.data.type === 'parseBindInfo') {
-                    //lastDesc = [aid, ssid, ipage, extraInfo]
-                    let result
-                    if (lastDesc[1]) {
-                        result = parseBangumiBind(event.data.content)
-                    } else {
-                        result = parseDescBind(event.data.content)
+            } else if (event.data.type === 'cacheUrl') {
+                cacheUrls[event.data.urlType] = event.data
+            } else if (event.data.type === 'parseBindInfo') {
+                //lastDesc = [aid, ssid, ipage, extraInfo]
+                let result
+                if (lastDesc[1]) {
+                    result = parseBangumiBind(event.data.content)
+                } else {
+                    result = parseDescBind(event.data.content)
+                }
+                let params = parseBindParams(event.data.content)
+                for (let key of Object.keys(result)) {
+                    result[key] += params
+                }
+                window.postMessage({
+                    type: 'parseBindInfo_response', timeStamp: event.data.timeStamp, content: result
+                }, "*");
+            } else if (event.data.type === 'getSetting') {
+                window.postMessage({
+                    type: 'getSetting_response', timeStamp: event.data.timeStamp, content: {
+                        setting: setting
                     }
-                    let params = parseBindParams(event.data.content)
-                    for (let key of Object.keys(result)) {
-                        result[key] += params
+                }, "*");
+            } else if (event.data.type === 'queryDesc') {
+                window.postMessage({
+                    type: 'queryDesc_response', timeStamp: event.data.timeStamp, content: {
+                        lastDesc: lastDesc
                     }
-                    window.postMessage({
-                        type: 'parseBindInfo_response',
-                        timeStamp: event.data.timeStamp,
-                        content: result
-                    }, "*");
-                } else if (event.data.type === 'getSetting') {
-                    window.postMessage({
-                        type: 'getSetting_response',
-                        timeStamp: event.data.timeStamp,
-                        content: {
-                            setting: setting
-                        }
-                    }, "*");
-                } else if (event.data.type === 'queryDesc') {
-                    window.postMessage({
-                        type: 'queryDesc_response',
-                        timeStamp: event.data.timeStamp,
-                        content: {
-                            lastDesc: lastDesc
-                        }
-                    }, "*");
-                } else if (event.data.type)
-                    if (event.data.source === 'DFex' && !event.data.type.endsWith('_response')) {
-                        if (event.data.type === 'previewDanmaku') {
-                            event.data.cid = lastDesc.cid
-                        } else if (event.data.type === "actualSegment") {
-                            if (!lastDesc) {
-                                await new Promise(resolve => {
-                                    passiveParserList.push({callback: resolve, type: 'passive'})
-                                })
-                            }
-                            let [aid, ssid, ipage, extraInfo] = lastDesc
-                            let desc = {
-                                aid: aid,
-                                cid: extraInfo.cid,
-                                href: window.location.href,
-                                extraInfo: extraInfo,
-                                ssid: ssid,
-                                ipage: ipage,
-                            }
-                            for (let key of Object.keys(desc)) {
-                                event.data[key] = desc[key]
-                            }
-                            console.log('actualSegment', event.data)
-                        } else if (event.data.type === 'bindVideo') {
-                            if (lastDesc[1]) {
-                                event.data.ss = lastDesc[1]
-                            } else {
-                                event.data.aid = lastDesc[0]
-                            }
-                        }
-                        chrome.runtime.sendMessage(event.data);
-                        let timeStamp = event.data.timeStamp
+                }, "*");
+            } else if (event.data.type) if (event.data.source === 'DFex' && !event.data.type.endsWith('_response')) {
+                if (event.data.type === 'previewDanmaku') {
+                    event.data.cid = lastDesc.cid
+                } else if (event.data.type === "actualSegment") {
+                    if (!lastDesc) {
                         await new Promise(resolve => {
-                            function handle(resp, sender, sendResponse) {
-                                if (resp.type !== event.data.type + '_response' || resp.timeStamp !== timeStamp)
-                                    return;
-                                chrome.runtime.onMessage.removeListener(handle)
-                                window.postMessage(resp, "*");
-                                resolve()
-                            }
-
-                            chrome.runtime.onMessage.addListener(handle)
+                            passiveParserList.push({callback: resolve, type: 'passive'})
                         })
                     }
+                    let [aid, ssid, ipage, extraInfo] = lastDesc
+                    let desc = {
+                        aid: aid,
+                        cid: extraInfo.cid,
+                        href: window.location.href,
+                        extraInfo: extraInfo,
+                        ssid: ssid,
+                        ipage: ipage,
+                    }
+                    for (let key of Object.keys(desc)) {
+                        event.data[key] = desc[key]
+                    }
+                    console.log('actualSegment', event.data)
+                } else if (event.data.type === 'bindVideo') {
+                    if (lastDesc[1]) {
+                        event.data.ss = lastDesc[1]
+                    } else {
+                        event.data.aid = lastDesc[0]
+                    }
+                }
+                chrome.runtime.sendMessage(event.data);
+                let timeStamp = event.data.timeStamp
+                await new Promise(resolve => {
+                    function handle(resp, sender, sendResponse) {
+                        if (resp.type !== event.data.type + '_response' || resp.timeStamp !== timeStamp) return;
+                        chrome.runtime.onMessage.removeListener(handle)
+                        window.postMessage(resp, "*");
+                        resolve()
+                    }
+
+                    chrome.runtime.onMessage.addListener(handle)
+                })
             }
         }
-        ,
-        false
-    );
-    if (
-        window.location.href.indexOf('https://www.bilibili.com/video')
-        || window.location.href.indexOf("https://www.bilibili.com/list/watchlater?bvid=")) {
+    }, false);
+    if (window.location.href.indexOf('https://www.bilibili.com/video') || window.location.href.indexOf("https://www.bilibili.com/list/watchlater?bvid=")) {
     }
     {
         document.addEventListener("DOMNodeInserted", async (msg) => {
@@ -489,8 +460,7 @@ if (document.head) {
         chrome.runtime.sendMessage(data);
         return await new Promise(resolve => {
             function handle(resp, sender, sendResponse) {
-                if (resp.type !== data.type + '_response' || resp.timeStamp !== timeStamp)
-                    return;
+                if (resp.type !== data.type + '_response' || resp.timeStamp !== timeStamp) return;
                 chrome.runtime.onMessage.removeListener(handle)
                 resolve(resp.content)
             }

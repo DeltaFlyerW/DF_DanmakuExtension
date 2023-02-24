@@ -11,6 +11,19 @@ You should have received a copy of the GNU General Public License along with
 this program; if not, see <http://www.gnu.org/licenses>.
 
 
+MIT EXCEPTION
+
+The following section provides an exception to the GPL v3 license:
+
+As an additional permission under GNU GPL version 3 section 7, you are
+granted the right to combine software that is licensed under the MIT License
+with the software licensed under the terms of this License without causing
+the resulting combined work to be covered by this License.
+
+This exception does not apply to any other components of the software, including those that are distributed under a different license.
+
+END OF MIT EXCEPTION
+
 =========================================================================
 
                     GNU GENERAL PUBLIC LICENSE

@@ -51,6 +51,8 @@
 
   ​https://github.com/xmcp/pakku.js
 
+扩展使用了xpadev开发的niconicomments库,以显示来自NicoNico的CommentArt,该库于MIT协议下开源
 
+  https://github.com/xpadev-net/niconicomments
 
     
