@@ -270,54 +270,11 @@
     })();
 
     (function closureExpose() {
-        function hookFunction(target, functionName, newFunction) {
-            let __pakku_origin__ = target[functionName]
-            target[functionName] = function () {
-                newFunction.apply(target, arguments)
-                __pakku_origin__.apply(target, arguments)
-            }
-        }
-
-        if (window.location.href.indexOf('https://www.bilibili.com/bangumi') === -1 && window.location.href.indexOf('https://www.bilibili.com/video') === -1) {
-            return;
-        }
-        try {
-            if (window.top.closure && window.top.closure.danmakuPlayer) return;
-        } catch (e) {
-            console.log(e)
-            return;
-        }
-        let widgetsJsonpString = null
-        if (window.top.nanoWidgetsJsonp && !window.top.nanoWidgetsJsonp.pakku_push) {
-            widgetsJsonpString = 'nanoWidgetsJsonp'
-        }
-        if (window.top.videoWidgetsJsonP && !window.top.videoWidgetsJsonP.pakku_push) {
-            widgetsJsonpString = 'videoWidgetsJsonP'
-        }
-        if (!widgetsJsonpString) return
-        let widgetsJsonp = eval(' window.top.' + widgetsJsonpString)
-        if (!window.top.closure) {
-            window.top.closure = {
-                danmakuPlayer: null, danmakuScroll: null
-            }
-            for (let key of Object.keys(window.top.closure)) {
-                Object.defineProperty(window.top.closure, key, {
-                    set: function (value) {
-                        let callback = window.top.closure['_' + key]
-                        window.top.closure['_' + key] = value
-                        if (callback) {
-                            callback()
-                        }
-                    }, get: function () {
-                        return window.top.closure['_' + key]
-                    }
-                })
-            }
-        }
-        widgetsJsonp.pakku_push = widgetsJsonp.push
         let injectList = [{
+            type: 'webpack',
             keyword: 'initDanmaku()',
-            replaceList: [[',this.initDanmaku()', ',this.initDanmaku(),window.top.closure.danmakuPlayer=this,console.log(this)']],
+            target: 'danmakuPlayer',
+            replaceList: [[',this.initDanmaku()', ',this.initDanmaku(),$inject,console.log(this)']],
             callback: function () {
                 window.top.closure.loadDanmu = function (ldanmu) {
                     console.log('loadDanmu', ldanmu)
@@ -369,7 +326,7 @@
                     if (window.top.player && currentCid) {
                         let currentTime = window.top.player.getCurrentTime()
                         let segmentIndex = Math.ceil((currentTime) / 360)
-                        if (!loadedSegmentList.includes(segmentIndex)) {
+                        if (segmentIndex !== 0 && !loadedSegmentList.includes(segmentIndex)) {
                             loadedSegmentList.push(segmentIndex)
                             console.log('postExtension("actualSegment")')
                             await postExtension("actualSegment", {'segmentIndex': segmentIndex})
@@ -383,7 +340,9 @@
                 }, 1000)
             }
         }, {
+            type: 'webpack',
             keyword: 'firstPb',
+            target: 'danmakuPlayer',
             replaceList: [['this.allDM=', '\nwindow.top.closure.danmakuPlayer=this.player,console.log(this),this.allDM=']],
             callback: function () {
                 window.top.closure.loadDanmu = function (ldanmu) {
@@ -395,35 +354,215 @@
                 }
             }
         }, {
-            keyword: '弹幕列表填充中',
-            replaceList: [['this.danmaku.style.display="block",', 'this.danmaku.style.display = "block",window.top.closure.danmakuScroll=this,']]
-        },]
+            type: 'webpack',
+            keyword: '弹幕列表',
+            target: 'danmakuScroll',
+            replaceList: [['this.danmaku.style.display="block",', 'this.danmaku.style.display = "block",$inject,']]
+        }]
 
-        widgetsJsonp.push = function (obj) {
-            for (let prop in obj[1]) {
-                try {
-                    for (let inject of injectList) {
-                        if (obj[1][prop].toString().indexOf(inject.keyword) !== -1) {
-                            console.log(prop, obj[1], inject.keyword)
-                            let injectedFunction = obj[1][prop].toString()
+        let coreInjector = {
+            type: 'core',
+            target: 'danmakuPlayer',
+            replaceList: [[',t.prototype.loadDmPb=function(e,t){var r=this;', ',t.prototype.loadDmPb=function(e,t){var r=this;$inject;']],
+            callback: function () {
+                window.top.closure.loadDanmu = function (ldanmu) {
+                    console.log('loadDanmu', ldanmu)
+                    let temp = []
+
+                    function hookAttr(obj, property) {
+                        obj["_" + property] = obj[property]
+                        Object.defineProperty(obj, property, {
+                            set: function (value) {
+                                debugger; // trigger the debugger when the value is set
+                                this["_" + property] = value;
+                            }, get: function () {
+                                return this["_" + property];
+                            }
+                        });
+                    }
+
+                    for (let danmu of ldanmu) {
+                        let obj = {
+                            attr: 0,
+                            color: danmu.color,
+                            date: danmu.ctime,
+                            mode: danmu.mode,
+                            size: danmu.fontsize,
+                            stime: danmu.progress,
+                            text: danmu.content,
+                            uhash: danmu.midHash,
+                            weight: danmu.weight ? danmu.weight : 8,
+                            dmid: danmu.id.toString(),
+                        }
+                        // hookAttr(obj, "attr")
+                        temp.push(obj)
+                    }
+
+
+                    ldanmu = temp
+                    if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                        window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                        window.top.closure.danmakuPlayer.dmListStore.refresh()
+                    } else {
+                        //add at 2022.12.16
+                        window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
+                    }
+                    if (window.top.closure.danmakuScroll) {
+                        window.top.closure.danmakuScroll.toinit()
+                    }
+                };
+                setInterval(async function () {
+                    if (window.top.player && currentCid) {
+                        let currentTime = window.top.player.getCurrentTime()
+                        let segmentIndex = Math.ceil((currentTime) / 360)
+                        if (segmentIndex !== 0 && !loadedSegmentList.includes(segmentIndex)) {
+                            loadedSegmentList.push(segmentIndex)
+                            console.log('postExtension("actualSegment")')
+                            await postExtension("actualSegment", {'segmentIndex': segmentIndex})
+                        }
+                        if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
+                            loadedSegmentList.push(segmentIndex + 1)
+                            console.log('postExtension("actualSegment")')
+                            await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
+                        }
+                    }
+                }, 1000)
+            }
+        }
+
+        function doReplace(injectedFunction, injector, injectIndex) {
+            let injected = false
+            for (let r of injector.replaceList) {
+                if (typeof r === 'string') {
+                    throw injector
+                }
+                let [src, dst] = r
+                if (dst.includes("$inject")) {
+                    dst = dst.replace("$inject", `window.top.closure.setValue("${injector.target}",this,${injectIndex})`)
+                }
+                if (injectedFunction.indexOf(src) === -1) {
+                    console.log('inject for', src, 'not found')
+                } else {
+                    injected = true
+                    console.log('replace ', src)
+                    injectedFunction = injectedFunction.replace(src, dst)
+                }
+            }
+            if (injected) {
+                if (injector.callback) {
+                    if (injector.target) {
+                        if (!window.top.closure['_' + injector.target]) {
+                            window.top.closure['_' + injector.target] = {}
+                        }
+                        window.top.closure['_' + injector.target][injectIndex] = injector.callback
+                    } else {
+                        injector.callback()
+                    }
+                }
+                return injectedFunction
+            } else return null;
+        }
+
+        (function initClosure() {
+            if (!window.top.closure) {
+                window.top.closure = {}
+                for (let injector of injectList) {
+                    if (injector.target) {
+                        window.top.closure[injector.target] = null
+                    }
+                }
+                for (let key of Object.keys(window.top.closure)) {
+                    Object.defineProperty(window.top.closure, key, {
+                        set: function (value) {
+                            let callback = window.top.closure['_' + key]
+                            window.top.closure['_' + key] = value
+                            if (callback) {
+                                callback()
+                            }
+                        }, get: function () {
+                            return window.top.closure['_' + key]
+                        }
+                    })
+                }
+                window.closure.setValue = function (name, value, injectIndex) {
+                    if (window.top.closure['_' + name][injectIndex]) {
+                        window.top.closure['_' + name][injectIndex]()
+                    }
+                    window.top.closure['_' + name] = value
+                }
+            }
+        })();
+
+        (function injectCore() {
+            function redefine() {
+                CustomElementRegistry.prototype._define = CustomElementRegistry.prototype.define
+                CustomElementRegistry.prototype.define = function (name, elem) {
+                    if (!this.get(name)) {
+                        this._define(name, elem)
+                    }
+                }
+            }
+
+            function main() {
+                // 创建 MutationObserver 对象
+                let handle = mutations => {
+                    // 遍历每一个 DOM 变化
+                    mutations.forEach(mutation => {
+                        // 遍历每一个新添加到页面的节点
+                        mutation.addedNodes.forEach(node => {
+                            // 判断节点是否为 <script> 元素
+                            if (node.tagName === 'SCRIPT' && node.src.includes('static/player/main/core.')) {
+                                redefine()
+                                //为了在页面元素的script执行前覆盖,使用同步逻辑
+                                const xhr = new XMLHttpRequest();
+                                xhr.open("get", node.src, false);
+                                xhr.send()
+                                let content = xhr.responseText
+                                content = doReplace(content, coreInjector, -1)
+                                console.log('replace core', node)
+                                window.top.eval(content)
+                                observer.disconnect()
+                                // 在这里添加你的代码来阻止该脚本被执行
+                                // node.remove(); // 删除该 <script> 元素
+                            }
+                        });
+                    });
+                }
+
+                const observer = new MutationObserver(handle);
+
+// 配置 MutationObserver 监听 DOM 的变化
+                observer.observe(document.documentElement, {
+                    childList: true, subtree: true
+                });
+            }
+
+            main()
+        })();
+
+        (function injectWebpack() {
+
+            function inject(widgetsJsonp, widgetsJsonpString) {
+
+                widgetsJsonp.pakku_push = widgetsJsonp.push
+
+                widgetsJsonp.push = function (obj) {
+                    widgetsJsonp.pakku_push(obj)
+                    for (let prop in obj[1]) {
+                        let injectedFunction = obj[1][prop].toString()
+                        try {
+                            let injectIndex = -1
                             let injected = false
-                            for (let r of inject.replaceList) {
-                                if (typeof r === 'string') {
-                                    throw inject
-                                }
-                                let [src, dst] = r
-                                if (injectedFunction.indexOf(src) === -1) {
-                                    console.log('inject for', src, 'not found')
-                                } else {
+                            for (let injector of injectList) {
+                                if (injector.type !== 'webpack') continue
+                                injectIndex += 1
+                                if (obj[1][prop].toString().indexOf(injector.keyword) !== -1) {
+                                    console.log(prop, obj[1], injector.keyword)
+                                    injectedFunction = doReplace(injectedFunction, injector, injectIndex)
                                     injected = true
-                                    console.log('replace ', src)
-                                    injectedFunction = injectedFunction.replace(src, dst)
                                 }
                             }
-                            if (injected) {
-                                if (inject.callback) {
-                                    inject.callback()
-                                }
+                            if (injected && injectedFunction) {
                                 try {
                                     window.top.eval(`window.top.${widgetsJsonpString}[window.top.${widgetsJsonpString}.length-1][1][${prop}]=` + injectedFunction)
                                 } catch (e) {
@@ -431,16 +570,67 @@
                                     console.log(e.stack)
                                 }
                             }
+                        } catch (e) {
+                            console.log(e, window.top, window)
                         }
                     }
-                } catch (e) {
-                    console.log(e, window.top, window)
                 }
-                widgetsJsonp.pakku_push(obj)
             }
-        }
-        console.log(window.nanoWidgetsJsonp)
+
+            function hookFunction(target, functionName, newFunction) {
+                let __pakku_origin__ = target[functionName]
+                target[functionName] = function () {
+                    newFunction.apply(target, arguments)
+                    __pakku_origin__.apply(target, arguments)
+                }
+            }
+
+            function main() {
+                if (window.location.href.indexOf('https://www.bilibili.com/bangumi') === -1 && window.location.href.indexOf('https://www.bilibili.com/video') === -1) {
+                    return;
+                }
+                try {
+                    if (window.top.closure && window.top.closure.danmakuPlayer) return;
+                } catch (e) {
+                    console.log(e)
+                    return;
+                }
+                let widgetsJsonpString = null
+                let widgetsJsonp
+                for (let webpack of ['nanoWidgetsJsonp', 'videoWidgetsJsonP']) {
+                    if (window.top[webpack]) {
+                        widgetsJsonpString = webpack
+                        widgetsJsonp = window.top[webpack]
+                    }
+                }
+                if (!widgetsJsonpString) {
+                    for (let webpack of ['nanoWidgetsJsonp', 'videoWidgetsJsonP']) {
+                        let injected = false
+                        Object.defineProperty(window.top, webpack, {
+                            set: function (value) {
+
+                                window.top['_' + webpack] = value
+                                if (!window.top['_' + webpack].pakku_push) {
+                                    inject(value, webpack)
+                                    console.log('webpack set, do inject', value)
+                                }
+                            }, get: function () {
+                                return window.top['_' + webpack]
+                            }
+                        })
+                    }
+                    console.log('closureExpose: webpack not found')
+                    return;
+                } else {
+                    console.log('closureExpose: hook webpack', (widgetsJsonp.length), widgetsJsonp)
+                    inject(widgetsJsonp, widgetsJsonpString)
+                }
+            }
+
+            main()
+        })();
     })();
+
 
     async function parse(url, json = false) {
         let res = await postExtension('parse', {url: url})

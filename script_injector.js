@@ -1,7 +1,6 @@
-'use strict'
+(function () {
+    'use strict'
 
-
-if (document.head) {
     async function sleep(time) {
         await new Promise((resolve) => setTimeout(resolve, time));
     }
@@ -440,6 +439,7 @@ if (document.head) {
                 }
             }
         })
+
     }
 
     async function parse(url, json) {
@@ -478,13 +478,16 @@ if (document.head) {
     }
 
 
-    console.log('inject xhrhook')
+    console.log('inject xhrhook');
 
-    //chrome
     let script = document.createElement("script");
-    script.src = chrome.runtime.getURL("xhr_hook.js");
-    document.head.appendChild(script);
-    //chrome end
-}
+    //为了在页面元素的script执行前覆盖,使用同步逻辑
+    const xhr = new XMLHttpRequest();
+    xhr.open("get", chrome.runtime.getURL("xhr_hook.js"), false);
+    xhr.send()
+    script.textContent = xhr.responseText
+    document.documentElement.insertBefore(script, document.documentElement.firstChild);
+
+})();
 
 
