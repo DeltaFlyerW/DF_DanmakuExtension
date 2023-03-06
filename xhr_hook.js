@@ -270,75 +270,78 @@
     })();
 
     (function closureExpose() {
+        function hookAttr(obj, property) {
+            obj["_" + property] = obj[property]
+            Object.defineProperty(obj, property, {
+                set: function (value) {
+                    debugger; // trigger the debugger when the value is set
+                    this["_" + property] = value;
+                }, get: function () {
+                    return this["_" + property];
+                }
+            });
+        }
+
+        let danmakuPlayerCallback = function () {
+            window.top.closure.loadDanmu = function (ldanmu) {
+                console.log('loadDanmu', ldanmu)
+                let temp = []
+
+
+                for (let danmu of ldanmu) {
+                    let obj = {
+                        attr: 0,
+                        color: danmu.color,
+                        date: danmu.ctime,
+                        mode: danmu.mode,
+                        size: danmu.fontsize,
+                        stime: danmu.progress,
+                        text: danmu.content,
+                        uhash: danmu.midHash,
+                        weight: danmu.weight ? danmu.weight : 8,
+                        dmid: danmu.id.toString(),
+                    }
+                    // hookAttr(obj, "attr")
+                    temp.push(obj)
+                }
+
+
+                ldanmu = temp
+                if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
+                    window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
+                    window.top.closure.danmakuPlayer.dmListStore.refresh()
+                } else {
+                    //add at 2022.12.16
+                    window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
+                }
+                if (window.top.closure.danmakuScroll) {
+                    window.top.closure.danmakuScroll.toinit()
+                }
+            };
+            setInterval(async function () {
+                if (window.top.player && currentCid) {
+                    let currentTime = window.top.player.getCurrentTime()
+                    let segmentIndex = Math.ceil((currentTime) / 360)
+                    if (segmentIndex !== 0 && !loadedSegmentList.includes(segmentIndex)) {
+                        loadedSegmentList.push(segmentIndex)
+                        console.log('postExtension("actualSegment")')
+                        await postExtension("actualSegment", {'segmentIndex': segmentIndex})
+                    }
+                    if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
+                        loadedSegmentList.push(segmentIndex + 1)
+                        console.log('postExtension("actualSegment")')
+                        await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
+                    }
+                }
+            }, 1000)
+        }
+
         let injectList = [{
             type: 'webpack',
             keyword: 'initDanmaku()',
             target: 'danmakuPlayer',
             replaceList: [[',this.initDanmaku()', ',this.initDanmaku(),$inject,console.log(this)']],
-            callback: function () {
-                window.top.closure.loadDanmu = function (ldanmu) {
-                    console.log('loadDanmu', ldanmu)
-                    let temp = []
-
-                    function hookAttr(obj, property) {
-                        obj["_" + property] = obj[property]
-                        Object.defineProperty(obj, property, {
-                            set: function (value) {
-                                debugger; // trigger the debugger when the value is set
-                                this["_" + property] = value;
-                            }, get: function () {
-                                return this["_" + property];
-                            }
-                        });
-                    }
-
-                    for (let danmu of ldanmu) {
-                        let obj = {
-                            attr: 0,
-                            color: danmu.color,
-                            date: danmu.ctime,
-                            mode: danmu.mode,
-                            size: danmu.fontsize,
-                            stime: danmu.progress,
-                            text: danmu.content,
-                            uhash: danmu.midHash,
-                            weight: danmu.weight ? danmu.weight : 8,
-                            dmid: danmu.id.toString(),
-                        }
-                        // hookAttr(obj, "attr")
-                        temp.push(obj)
-                    }
-
-
-                    ldanmu = temp
-                    if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                        window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
-                        window.top.closure.danmakuPlayer.dmListStore.refresh()
-                    } else {
-                        //add at 2022.12.16
-                        window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
-                    }
-                    if (window.top.closure.danmakuScroll) {
-                        window.top.closure.danmakuScroll.toinit()
-                    }
-                };
-                setInterval(async function () {
-                    if (window.top.player && currentCid) {
-                        let currentTime = window.top.player.getCurrentTime()
-                        let segmentIndex = Math.ceil((currentTime) / 360)
-                        if (segmentIndex !== 0 && !loadedSegmentList.includes(segmentIndex)) {
-                            loadedSegmentList.push(segmentIndex)
-                            console.log('postExtension("actualSegment")')
-                            await postExtension("actualSegment", {'segmentIndex': segmentIndex})
-                        }
-                        if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
-                            loadedSegmentList.push(segmentIndex + 1)
-                            console.log('postExtension("actualSegment")')
-                            await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
-                        }
-                    }
-                }, 1000)
-            }
+            callback: danmakuPlayerCallback
         }, {
             type: 'webpack',
             keyword: 'firstPb',
@@ -363,71 +366,8 @@
         let coreInjector = {
             type: 'core',
             target: 'danmakuPlayer',
-            replaceList: [[',t.prototype.loadDmPb=function(e,t){var r=this;', ',t.prototype.loadDmPb=function(e,t){var r=this;$inject;']],
-            callback: function () {
-                window.top.closure.loadDanmu = function (ldanmu) {
-                    console.log('loadDanmu', ldanmu)
-                    let temp = []
-
-                    function hookAttr(obj, property) {
-                        obj["_" + property] = obj[property]
-                        Object.defineProperty(obj, property, {
-                            set: function (value) {
-                                debugger; // trigger the debugger when the value is set
-                                this["_" + property] = value;
-                            }, get: function () {
-                                return this["_" + property];
-                            }
-                        });
-                    }
-
-                    for (let danmu of ldanmu) {
-                        let obj = {
-                            attr: 0,
-                            color: danmu.color,
-                            date: danmu.ctime,
-                            mode: danmu.mode,
-                            size: danmu.fontsize,
-                            stime: danmu.progress,
-                            text: danmu.content,
-                            uhash: danmu.midHash,
-                            weight: danmu.weight ? danmu.weight : 8,
-                            dmid: danmu.id.toString(),
-                        }
-                        // hookAttr(obj, "attr")
-                        temp.push(obj)
-                    }
-
-
-                    ldanmu = temp
-                    if (window.top.closure.danmakuPlayer.dmListStore && window.top.closure.danmakuPlayer.dmListStore.appendDm) {
-                        window.top.closure.danmakuPlayer.dmListStore.appendDm(ldanmu)
-                        window.top.closure.danmakuPlayer.dmListStore.refresh()
-                    } else {
-                        //add at 2022.12.16
-                        window.top.closure.danmakuPlayer.danmaku.addList(ldanmu)
-                    }
-                    if (window.top.closure.danmakuScroll) {
-                        window.top.closure.danmakuScroll.toinit()
-                    }
-                };
-                setInterval(async function () {
-                    if (window.top.player && currentCid) {
-                        let currentTime = window.top.player.getCurrentTime()
-                        let segmentIndex = Math.ceil((currentTime) / 360)
-                        if (segmentIndex !== 0 && !loadedSegmentList.includes(segmentIndex)) {
-                            loadedSegmentList.push(segmentIndex)
-                            console.log('postExtension("actualSegment")')
-                            await postExtension("actualSegment", {'segmentIndex': segmentIndex})
-                        }
-                        if (currentTime + 30 > segmentIndex * 360 && !loadedSegmentList.includes(segmentIndex + 1)) {
-                            loadedSegmentList.push(segmentIndex + 1)
-                            console.log('postExtension("actualSegment")')
-                            await postExtension("actualSegment", {'segmentIndex': segmentIndex + 1})
-                        }
-                    }
-                }, 1000)
-            }
+            replaceList: [[',t.prototype.loadDmPb=function(e,t){var r=this;', ',t.prototype.loadDmPb=function(e,t){var r=this;$inject;'],],
+            callback: danmakuPlayerCallback
         }
 
         function doReplace(injectedFunction, injector, injectIndex) {
@@ -495,12 +435,18 @@
 
         (function injectCore() {
             function redefine() {
-                CustomElementRegistry.prototype._define = CustomElementRegistry.prototype.define
-                CustomElementRegistry.prototype.define = function (name, elem) {
-                    if (!this.get(name)) {
-                        this._define(name, elem)
+                window._customElements = window.customElements
+                Object.defineProperty(window, 'customElements', {
+                    get: function () {
+                        let stack = new Error().stack
+                        if (stack.includes('static/player/main/core.')) {
+                            console.log("disable customElements for core", stack)
+                            return null
+                        } else {
+                            return window._customElements
+                        }
                     }
-                }
+                })
             }
 
             function main() {
@@ -512,7 +458,6 @@
                         mutation.addedNodes.forEach(node => {
                             // 判断节点是否为 <script> 元素
                             if (node.tagName === 'SCRIPT' && node.src.includes('static/player/main/core.')) {
-                                redefine()
                                 //为了在页面元素的script执行前覆盖,使用同步逻辑
                                 const xhr = new XMLHttpRequest();
                                 xhr.open("get", node.src, false);
@@ -521,6 +466,7 @@
                                 content = doReplace(content, coreInjector, -1)
                                 console.log('replace core', node)
                                 window.top.eval(content)
+                                redefine()
                                 observer.disconnect()
                                 // 在这里添加你的代码来阻止该脚本被执行
                                 // node.remove(); // 删除该 <script> 元素
@@ -605,7 +551,6 @@
                 }
                 if (!widgetsJsonpString) {
                     for (let webpack of ['nanoWidgetsJsonp', 'videoWidgetsJsonP']) {
-                        let injected = false
                         Object.defineProperty(window.top, webpack, {
                             set: function (value) {
 
@@ -619,7 +564,6 @@
                             }
                         })
                     }
-                    console.log('closureExpose: webpack not found')
                     return;
                 } else {
                     console.log('closureExpose: hook webpack', (widgetsJsonp.length), widgetsJsonp)
@@ -646,38 +590,6 @@
     }
 
     async function biliEvolvedPlugin() {
-        let i = 0, sideBar
-        if (document.querySelector('[id="custom-navbar-style"]') || document.querySelector('[id="auto-hide-sidebar"]')) {
-            while (!sideBar && i < 25) {
-                i += 1
-                sideBar = document.querySelector("body > div.be-settings > div.sidebar")
-                await new Promise((resolve) => setTimeout(resolve, 200));
-            }
-        }
-        if (!sideBar) {
-            sideBar = copySidebar()
-        }
-        console.log('sideBar', sideBar)
-        let htmlText = `
-                        <div title="加载本地弹幕" class="dfex-upload"><i class="be-icon" style="--size:26px;">
-                            <div class="custom-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920">
-                                    <path d="m1838.86 1451.576 81.14 81.37-361.566 361.566H361.566L0 1532.946l81.255-81.37 327.891 328.007h1101.708l328.006-328.007ZM962.333 25l500.285 500.285-81.14 81.37-361.795-361.681v1187.559H904.869V244.973L543.188 606.655l-81.14-81.37L962.333 25Z"
-                                          fill-rule="evenodd"/>
-                                </svg>
-                            </div>
-                        </i></div>
-                        <div title="绑定外站视频" class="dfex-bind"><i class="be-icon" style="--size:26px;">
-                            <div class="custom-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920">
-                                    <path d="M1866.003 351.563 1565.128 50.575c-69.46-67.652-180.932-67.426-248.923.565L906.23 461.116c-68.33 68.443-68.33 179.69.113 248.132l31.623 31.624 79.737-79.963-31.624-31.51c-24.282-24.396-24.282-64.038 0-88.433l409.977-409.977c24.508-24.395 64.828-24.17 89.675 0l299.859 299.972c24.734 25.186 24.847 65.619.564 90.014l-409.976 409.977c-24.508 24.282-64.15 24.282-88.546 0l-110.795-110.909 159.473-159.36-79.85-79.85-435.614 435.502-109.779-109.779c-32.866-33.656-76.8-52.292-123.67-52.63-43.596 1.694-92.273 18.296-126.156 52.178L51.377 1316.081c-68.442 68.442-68.442 179.69 0 248.132l301.553 301.553c34.108 34.108 79.059 51.275 124.01 51.275 44.95 0 89.9-17.167 124.122-51.275l409.976-409.977c33.77-33.882 52.405-78.607 52.066-126.042-.226-46.984-18.974-90.918-52.066-123.219l-30.494-30.494-79.85 79.85 30.946 30.945c11.86 11.633 18.41 27.106 18.523 43.595.113 16.942-6.664 33.092-18.974 45.516l-409.977 409.976c-23.492 23.492-64.94 23.492-88.433 0l-301.553-301.553c-11.746-11.746-18.183-27.444-18.183-44.273 0-16.715 6.437-32.414 18.183-44.16l409.977-409.976c12.197-12.31 28.235-19.087 45.063-19.087h.452c16.49.113 31.962 6.663 43.934 19.087l110.344 110.23-162.184 162.297 79.85 79.85 438.324-438.438 110.796 110.908c34.334 34.221 79.171 51.275 124.122 51.275 44.95 0 89.901-17.054 124.122-51.275l409.977-409.977c67.877-67.99 67.99-179.463 0-249.26"
-                                          fill-rule="evenodd"/>
-                                </svg>
-                            </div>
-                        </i></div>
-                        `
-        sideBar.insertAdjacentHTML('beforeend', htmlText);
-
         function copySidebar() {
             let translateX = setting.hideSidebar ? '-90' : '-50'
 
@@ -834,7 +746,44 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
             window.center = window.querySelector('[id="dfex-center"]')
             document.body.appendChild(window);
             return window
+        };
+
+        async function main() {
+            let i = 0, sideBar
+            if (document.querySelector('[id="custom-navbar-style"]') || document.querySelector('[id="auto-hide-sidebar"]')) {
+                while (!sideBar && i < 25) {
+                    i += 1
+                    sideBar = document.querySelector("body > div.be-settings > div.sidebar")
+                    await new Promise((resolve) => setTimeout(resolve, 200));
+                }
+            }
+            if (!sideBar) {
+                sideBar = copySidebar()
+            }
+            console.log('sideBar', sideBar)
+            let htmlText = `
+                        <div title="加载本地弹幕" class="dfex-upload"><i class="be-icon" style="--size:26px;">
+                            <div class="custom-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920">
+                                    <path d="m1838.86 1451.576 81.14 81.37-361.566 361.566H361.566L0 1532.946l81.255-81.37 327.891 328.007h1101.708l328.006-328.007ZM962.333 25l500.285 500.285-81.14 81.37-361.795-361.681v1187.559H904.869V244.973L543.188 606.655l-81.14-81.37L962.333 25Z"
+                                          fill-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </i></div>
+                        <div title="绑定外站视频" class="dfex-bind"><i class="be-icon" style="--size:26px;">
+                            <div class="custom-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920">
+                                    <path d="M1866.003 351.563 1565.128 50.575c-69.46-67.652-180.932-67.426-248.923.565L906.23 461.116c-68.33 68.443-68.33 179.69.113 248.132l31.623 31.624 79.737-79.963-31.624-31.51c-24.282-24.396-24.282-64.038 0-88.433l409.977-409.977c24.508-24.395 64.828-24.17 89.675 0l299.859 299.972c24.734 25.186 24.847 65.619.564 90.014l-409.976 409.977c-24.508 24.282-64.15 24.282-88.546 0l-110.795-110.909 159.473-159.36-79.85-79.85-435.614 435.502-109.779-109.779c-32.866-33.656-76.8-52.292-123.67-52.63-43.596 1.694-92.273 18.296-126.156 52.178L51.377 1316.081c-68.442 68.442-68.442 179.69 0 248.132l301.553 301.553c34.108 34.108 79.059 51.275 124.01 51.275 44.95 0 89.9-17.167 124.122-51.275l409.976-409.977c33.77-33.882 52.405-78.607 52.066-126.042-.226-46.984-18.974-90.918-52.066-123.219l-30.494-30.494-79.85 79.85 30.946 30.945c11.86 11.633 18.41 27.106 18.523 43.595.113 16.942-6.664 33.092-18.974 45.516l-409.977 409.976c-23.492 23.492-64.94 23.492-88.433 0l-301.553-301.553c-11.746-11.746-18.183-27.444-18.183-44.273 0-16.715 6.437-32.414 18.183-44.16l409.977-409.976c12.197-12.31 28.235-19.087 45.063-19.087h.452c16.49.113 31.962 6.663 43.934 19.087l110.344 110.23-162.184 162.297 79.85 79.85 438.324-438.438 110.796 110.908c34.334 34.221 79.171 51.275 124.122 51.275 44.95 0 89.901-17.054 124.122-51.275l409.977-409.977c67.877-67.99 67.99-179.463 0-249.26"
+                                          fill-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </i></div>
+                        `
+            sideBar.insertAdjacentHTML('beforeend', htmlText);
+            return sideBar
         }
+
+        let sideBar = await main();
 
         (function uploadButton() {
             let button = sideBar.querySelector('[class="dfex-upload"]')
