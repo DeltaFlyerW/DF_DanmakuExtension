@@ -95,7 +95,7 @@
         };
         XMLHttpRequest.prototype.pakku_addEventListener = XMLHttpRequest.prototype.addEventListener;
         XMLHttpRequest.prototype.addEventListener = function (name, callback) {
-            if (name === "load") {
+            if (name === "load" || name === 'readystatechange' || name === 'loadend') {
                 this.pakku_load_callback = this.pakku_load_callback || [];
                 this.pakku_load_callback.push(callback);
             }
@@ -136,6 +136,51 @@
             }
 
             return function (arg) {
+                let that = this
+
+                function callback(resp) {
+                    if (!resp || !resp.data) return that.pakku_send(arg);
+                    Object.defineProperty(that, "response", {
+                        writable: true
+                    });
+                    Object.defineProperty(that, "responseText", {
+                        writable: true
+                    });
+                    Object.defineProperty(that, "readyState", {
+                        writable: true
+                    });
+                    Object.defineProperty(that, "status", {
+                        writable: true
+                    });
+                    Object.defineProperty(that, "statusText", {
+                        writable: true
+                    });
+                    Object.defineProperty(that, "responseURL", {
+                        writable: true
+                    });
+
+                    if (that.responseType === 'arraybuffer') {
+                        if (resp.data instanceof Uint8Array) that.response = uint8array_to_arraybuffer(resp.data); else if (resp.data instanceof Object) // uint8arr object representation {0: ord, 1: ord, ...}
+                            that.response = byte_object_to_arraybuffer(resp.data); else // maybe str
+                            that.response = str_to_arraybuffer(resp.data);
+                        that.responseURL = 'file:'
+                    } else {
+                        that.response = that.responseText = resp.data;
+                    }
+                    // console.log(resp.data)
+                    that.readyState = 4;
+                    that.status = 200;
+                    that.statusText = "Pakku OK";
+                    that.responseURL = that.pakku_url
+                    console.log("pakku ajax: got tampered response for", that.pakku_url);
+                    that.pakku_load_callback = that.pakku_load_callback || [];
+                    if (that.onreadystatechange) that.pakku_load_callback.push(that.onreadystatechange);
+                    if (that.onload) that.pakku_load_callback.push(that.onload);
+                    if (that.onloadend) that.pakku_load_callback.push(that.onloadend);
+                    if (that.pakku_load_callback.length > 0) {
+                        for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
+                    }
+                }
 
                 if (this.pakku_url.indexOf('seg.so') !== -1 && this.pakku_url.indexOf('segment_index') !== -1 && this.pakku_url.indexOf('data.bilibili.com') === -1) {
                     while (callbacksAfterDanmakuRequest.length !== 0) {
@@ -156,91 +201,13 @@
                         loadedSegmentList = []
                     }
                     if (this.pakku_load_callback || this.onreadystatechange !== null) {
-                        send_msg_proxy(that.pakku_url, function (resp) {
-                            if (!resp || !resp.data) return that.pakku_send(arg);
-                            Object.defineProperty(that, "response", {
-                                writable: true
-                            });
-                            Object.defineProperty(that, "responseText", {
-                                writable: true
-                            });
-                            Object.defineProperty(that, "readyState", {
-                                writable: true
-                            });
-                            Object.defineProperty(that, "status", {
-                                writable: true
-                            });
-                            Object.defineProperty(that, "statusText", {
-                                writable: true
-                            });
-                            Object.defineProperty(that, "responseURL", {
-                                writable: true
-                            });
-
-                            if (that.responseType === 'arraybuffer') {
-                                if (resp.data instanceof Uint8Array) that.response = uint8array_to_arraybuffer(resp.data); else if (resp.data instanceof Object) // uint8arr object representation {0: ord, 1: ord, ...}
-                                    that.response = byte_object_to_arraybuffer(resp.data); else // maybe str
-                                    that.response = str_to_arraybuffer(resp.data);
-                                that.responseURL = 'file:'
-                            } else {
-                                that.response = that.responseText = resp.data;
-                            }
-                            // console.log(resp.data)
-                            that.readyState = 4;
-                            that.status = 200;
-                            that.statusText = "Pakku OK";
-                            that.responseURL = that.pakku_url
-                            console.log("pakku ajax: got tampered response for", that.pakku_url);
-                            that.pakku_load_callback = that.pakku_load_callback || [];
-                            if (that.onreadystatechange) that.pakku_load_callback.push(that.onreadystatechange);
-                            if (that.onload) that.pakku_load_callback.push(that.onload);
-                            if (that.pakku_load_callback.length > 0) {
-                                for (let i = 0; i < that.pakku_load_callback.length; i++) that.pakku_load_callback[i].bind(that)();
-                            }
-                        });
+                        send_msg_proxy(that.pakku_url, callback);
                     } else {
                         console.log("pakku ajax: ignoring request as no onload callback found", this.pakku_url);
                         return that.pakku_send(arg);
                     }
                 } else if (youtubeManager.loadComment && this.pakku_url.indexOf("x/v2/reply") !== -1) {
-                    youtubeManager.loadComment(this.pakku_url).then((response) => {
-                        this.abort();
-                        Object.defineProperty(this, "response", {
-                            writable: true
-                        });
-                        Object.defineProperty(this, "responseText", {
-                            writable: true
-                        });
-                        Object.defineProperty(this, "readyState", {
-                            writable: true
-                        });
-                        Object.defineProperty(this, "status", {
-                            writable: true
-                        });
-                        Object.defineProperty(this, "statusText", {
-                            writable: true
-                        });
-                        Object.defineProperty(this, "responseURL", {
-                            writable: true
-                        });
-
-                        this.response = this.responseText = response;
-                        // console.log(resp.data)
-                        this.readyState = 4;
-                        this.status = 200;
-                        this.statusText = "Pakku OK";
-                        this.responseURL = this.pakku_url
-                        console.log("pakku ajax: got tampered response for", this.pakku_url);
-                        this.pakku_load_callback = this.pakku_load_callback || [];
-                        for (let callback of [this.onreadystatechange, this.onload, this.onloadend]) {
-                            if (callback) {
-                                this.pakku_load_callback.push(callback);
-                            }
-                        }
-                        if (this.pakku_load_callback.length > 0) {
-                            for (let i = 0; i < this.pakku_load_callback.length; i++) this.pakku_load_callback[i].bind(this)();
-                        }
-                    }).catch(() => {
+                    youtubeManager.loadComment(this.pakku_url).then(callback).catch(() => {
                         return this.pakku_send(arg)
                     })
                 } else {

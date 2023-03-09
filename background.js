@@ -338,6 +338,8 @@ let parseNicoServerResponse = function () {
             'purple2': 6697932,
             'black2': 6710886
         }
+        let caCommands = ['full', 'patissier', 'ender', 'mincho', 'gothic', 'migi', 'hidari']
+        let caCharRegex = new RegExp(` ◥█◤■◯△×\u05C1\u0E3A\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u200C\u200D\u200E\u200F\u3000\u3164\u2580\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588\u2589\u258A\u258B\u258C\u258D\u258E\u258F\u2590\u2591\u2592\u2593\u2594\u2595\u2596\u2597\u2598\u2599\u259A\u259B\u259C\u259D\u259E\u259F\u25E2\u25E3\u25E4\u25E5`.split('').join('|'))
         let commentArts = []
 
         for (let i = 0; i < lres.length; i++) {
@@ -345,57 +347,63 @@ let parseNicoServerResponse = function () {
             try {
                 let ctime = danmu['date'], progress = danmu['vpos'] * 10, content = danmu['content'],
                     command = danmu['mail'], isReplaced = false
-                // if (progress > 600)
-                //     progress -= 600 //http://nicowiki.com/elsecom.html#nakahyoji
-                for (let script of lNicoScript) {
-                    if (script['type'] === 'replace') {
-                        if ((script['exactMatch'] && content === script['src']) || (!script['exactMatch'] && content.indexOf(script['src']) !== -1)) {
-                            isReplaced = true
-                            command = script['nico']['mail']
-                            if (script['replaceAll']) {
-                                content = script['dest']
-                            } else {
-                                content = content.replaceAll(script['src'], script['dest'])
-                            }
-                        }
-                    }
-                }
                 let lcommand = null
                 let danmuType = 1
                 let fontSize = 25
                 let color = 0xffffff
                 let isCommentArt = content.split("\n").length > 2;
                 danmu.isRaw = false
-                let duration = null
+                if (caCharRegex.exec(content)) {
+                    isCommentArt = true
+                }
                 if (command && command.length > 0) {
                     lcommand = JSON.parse('"' + command + '"').split(' ')
                     for (let command of lcommand) {
-                        if (command.length < 2) {
-                        } else if (command === 'raw') {
-                            danmu.isRaw = true
-                        } else if (command === 'ue') {
-                            danmuType = 5
-                        } else if (command === 'shita') {
-                            danmuType = 4
-                        } else if (command === 'big') {
-                            fontSize = 30
-                        } else if (command === 'small') {
-                            fontSize = 20
-                        } else if (command === 'owner') {
-                            isCommentArt = true
-                            danmu.owner = true
-                        } else if (dColor.hasOwnProperty(command)) {
-                            color = dColor[command]
-                        } else if (command[0] === '#') try {
-                            color = parseInt(command.slice(1), 16)
-                        } catch (e) {
-                        } else if (command[0] === "@") {
-                            if (!isReplaced) {
-                                duration = Number(command.slice(1))
+                        switch (command) {
+                            case  'raw': {
+                                danmu.isRaw = true
+                                break
                             }
-                            isCommentArt = true
-                        } else if (command === 'migi' || command === 'hidari' || command === 'owner') {
-                            isCommentArt = true
+                            case  'ue': {
+                                danmuType = 5
+                                break
+                            }
+                            case  'shita': {
+                                danmuType = 4
+                                break
+                            }
+                            case  'big': {
+                                fontSize = 30
+                                break
+                            }
+                            case  'small': {
+                                fontSize = 20
+                                break
+                            }
+                            case  'owner': {
+                                isCommentArt = true
+                                danmu.owner = true
+                                break
+                            }
+                            case caCommands.includes(command): {
+                                isCommentArt = true
+                                break
+                            }
+                            case dColor.hasOwnProperty(command): {
+                                color = dColor[command]
+                                break
+                            }
+                            case command[0] === '#': {
+                                try {
+                                    color = parseInt(command.slice(1), 16)
+                                } catch (e) {
+                                }
+                                break
+                            }
+                            case command[0] === "@": {
+                                isCommentArt = true
+                                break
+                            }
                         }
                     }
                     if (isCommentArt) {
@@ -406,6 +414,19 @@ let parseNicoServerResponse = function () {
                 if (isCommentArt) {
                     commentArts.push(danmu)
                 } else {
+                    for (let script of lNicoScript) {
+                        if (script['type'] === 'replace') {
+                            if ((script['exactMatch'] && content === script['src']) || (!script['exactMatch'] && content.indexOf(script['src']) !== -1)) {
+                                isReplaced = true
+                                command = script['nico']['mail']
+                                if (script['replaceAll']) {
+                                    content = script['dest']
+                                } else {
+                                    content = content.replaceAll(script['src'], script['dest'])
+                                }
+                            }
+                        }
+                    }
                     danmu = {
                         nico: danmu,
                         color: color,
