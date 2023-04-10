@@ -2,6 +2,16 @@
     'use strict'
     if (XMLHttpRequest.prototype.pakku_open) return;
 
+    let console={};
+    (() => {
+        Object.keys(window.console).forEach(functionName => {
+            if (typeof window.console[functionName] == "function") {
+                console[functionName]=window.console[functionName]
+            }
+        })
+        console.log('disable sentry')
+    })();
+
     let setting = {}
     postExtension("getSetting").then(function (result) {
         setting = result.setting
@@ -65,15 +75,7 @@
         }
     }
 
-    let callbacksAfterDanmakuRequest = [biliEvolvedPlugin, () => {
-        while (console.log.__sentry_original__) {
-            console.log = console.log.__sentry_original__
-        }
-        while (Element.prototype.addEventListener.__sentry_original__) {
-            Element.prototype.addEventListener = Element.prototype.addEventListener.__sentry_original__
-        }
-        console.log('disable sentry')
-    },];
+    let callbacksAfterDanmakuRequest = [biliEvolvedPlugin,];
     let callbacks = {};
     let loadedSegmentList = [];
     let currentCid = null;

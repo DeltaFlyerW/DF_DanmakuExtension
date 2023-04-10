@@ -149,6 +149,7 @@ let [str, len, searchContent, searchPeriod, ignoreBili, nicoOnly, stringHash] = 
     }
     String.prototype.find = String.prototype.indexOf
     String.prototype.startswith = String.prototype.startsWith
+
     return [function str(object) {
         return object.toString()
     }, function len(object) {
@@ -221,8 +222,6 @@ let [str, len, searchContent, searchPeriod, ignoreBili, nicoOnly, stringHash] = 
 
         return 4294967296 * (2097151 & h2) + (h1 >>> 0);
     }]
-
-
 })();
 let [serverAwait, serverResolve] = (function (url = '') {
     let requests = []
@@ -1028,7 +1027,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
     }
 
     function danmakuHash(danmu) {
-        return (danmu.progress || 0) + stringHash(danmu.content) + (danmu.id || 0)
+        return stringHash(danmu.content, danmu.progress + danmu.id + danmu.time)
     }
 
     window.danmakuHash = danmakuHash
@@ -2161,32 +2160,31 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             return aldanmu
         }
 
-        async function loadProtoDanmu(url, timeout = null, header = null, retry = 0, filter = false) {
+        async function loadProtoDanmu(url, timeout = null, header = null, filter = false) {
+            const maxRetry = 3;
             const xhr = new XMLHttpRequest();
-            xhr.withCredentials = true
-            try {
-                if (timeout !== null) {
-                    xhr.timeout = timeout
-                } else {
-                    xhr.timeout = 30000
+            xhr.withCredentials = true;
+            if (timeout !== null) {
+                xhr.timeout = timeout;
+            } else {
+                xhr.timeout = 30000;
+            }
+            xhr.open("get", url, true);
+            xhr.responseType = 'arraybuffer';
+            if (header !== null) {
+                for (let key in header) {
+                    xhr.setRequestHeader(key, header[key]);
                 }
+            }
+            if (xhr.pakku_send) {
+                xhr.pakku_send();
+            } else {
+                xhr.send();
+            }
+            let retry = 0
 
-                xhr.open("get", url, true);
-                xhr.responseType = 'arraybuffer';
-
-                if (header !== null) {
-                    for (let key in header) {
-                        xhr.setRequestHeader(key, header[key])
-                    }
-                }
-
-                if (xhr.pakku_send) {
-                    xhr.pakku_send()
-                } else {
-                    xhr.send()
-                }
-
-                return new Promise((resolve) => {
+            while (retry < maxRetry) {
+                let result = await new Promise(resolve => {
                     xhr.onreadystatechange = async () => {
                         if (xhr.readyState === 4) {
                             if (xhr.status === 200) {
@@ -2195,42 +2193,52 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                                     if (extensionSetting.blockHighlightDanmaku) {
                                         lpdanmu.forEach(e => {
                                             if (e.attr === 4) {
-                                                delete e.attr
+                                                delete e.attr;
                                             }
-                                        })
+                                        });
                                     }
                                     if (filter) {
-                                        resolve((await danmuFilter(lpdanmu)))
+                                        resolve(await danmuFilter(lpdanmu));
                                     } else {
-                                        resolve(lpdanmu)
+                                        resolve(lpdanmu);
                                     }
                                 } catch (e) {
-                                    console.log(e.stack)
-                                    resolve([])
+                                    console.log(e.stack);
+                                    resolve([]);
                                 }
-
                             } else if (xhr.status === 304) {
-                                resolve(null)
+                                resolve(null);
                             } else {
-                                console.log('XhrError=', retry, '/', xhr)
-                                if (retry < 3) {
-                                    resolve(await loadProtoDanmu(url, timeout, header, retry + 1))
-                                } else {
-                                    resolve(null)
-                                }
+                                resolve()
+                                console.log('XhrError=', retry, '/', xhr);
+                                retry++;
                             }
                         }
-                    }
-                })
-            } catch (e) {
-                console.log('XhrError=', retry, '/', xhr)
-                if (retry < 3) {
-                    return (await loadProtoDanmu(url, timeout, header, retry + 1))
+                    };
+                    xhr.ontimeout = () => {
+                        console.log('XhrTimeoutError=', retry, '/', xhr);
+                        retry++;
+                        xhr.abort();
+                        resolve()
+                    };
+                    xhr.onerror = () => {
+                        console.log('XhrError=', retry, '/', xhr);
+                        retry++;
+                        resolve()
+                    };
+                });
+                if (result) {
+                    return result
+                } else {
+                    retry++;
+                }
+                if (retry === maxRetry) {
+                    return null;
                 }
             }
         }
 
-        return [async function moreFiltedHistory(cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
+        async function moreFiltedHistory(cid, duration = null, existNdanmu = 0, expectedDanmuNum = 0) {
             let date = new Date();
             date.setTime(date.getTime() - 86400000)
             console.log('GetDanmuFor CID' + cid)
@@ -2282,7 +2290,9 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
             }
             return result
-        }, function ldanmu_to_proto_seg(ldanmu, segIndex) {
+        }
+
+        function ldanmu_to_proto_seg(ldanmu, segIndex) {
             let res = [];
             // if (ndanmu * extensionSetting.danmuRate > ldanmu.length) {
             //     ldanmu = mergeDanmu(ldanmu,
@@ -2300,7 +2310,9 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             let res_uint8arr = proto_seg.encode(proto_seg.create({elems: res})).finish();
             if (LOG_PROTO) console.log("verbose proto:", dom, res, res_uint8arr);
             return [res_uint8arr, res.length, res]
-        }, loadProtoDanmu,]
+        }
+
+        return [moreFiltedHistory, ldanmu_to_proto_seg, loadProtoDanmu,]
     })();
 
 
@@ -2316,25 +2328,24 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
     function splitServerDanmaku(ldanmu, info) {
 
         let source = {
-            //bilibili
             'b': {
                 elems: [], id: null, site: 'bilibili'
-            }, //niconico
+            },  //bilibili
             'n': {
                 elems: [], id: null, site: 'niconico'
-            }, //animad
+            }, //niconico
             'f': {
                 elems: [], id: null, site: 'animad'
-            }, //twitch
+            }, //animad
             't': {
                 elems: [], id: null, site: 'twitch'
-            }, //youtube
+            }, //twitch
             'y': {
                 elems: [], id: null, site: 'youtube'
-            }, //unknown
+            }, //youtube
             'x': {
                 elems: [], id: null, site: 'unknown'
-            }
+            }  //unknown
         }
         if (info && info.source) {
             for (let key of Object.keys(info.source)) {
@@ -2481,246 +2492,62 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         }
     }();
 
-    let mergeDescDanmaku = function () {
-        'use strict'
-
-        let yuyuyu = {
-            365987968: ["27840775&d=1212"],
-            366008095: ["27860154&d=588"],
-            366008243: ["27925827&d=627"],
-            366008933: ["27975576&d=545"],
-            366009465: ["31264610&d=984"],
-            366008935: ["19940354&d=467", "35140082&d=467"],
-            366008814: ["23567020&d=296", "34085817&d=296"],
-            366008089: ["31656440&d=302"],
-            366010017: ["20048078&d=1311", "35140107&d=1311"],
-            366009502: ["30915370&d=261"],
-            366009228: ["30915371&d=483"],
-            366009539: ["30915372&d=400"],
-            370556018: ["20479868&d=1618"],
-            370561332: ["20668859&d=411"],
-            370562758: ["34085819&d=407"],
-            370560322: ["34085837&d=275"],
-            370584514: ["20876728&d=1477"],
-            370567817: ["21139437&d=271"],
-            370575777: ["44768035&d=629"],
-            370571511: ["44768048&d=370"],
-            370589136: ["24691214&d=1543"],
-            370575597: ["24837069&d=670"],
-            370577202: ["52082216&d=519"],
-            370576292: ["52082217&d=624"],
-            370588637: ["25334865&d=1311"],
-            370583360: ["25448399&d=591"],
-            370583273: ["52082230&d=522"],
-            370587569: ["52082257&d=643"],
-            371138359: ["25649235&d=1673"],
-            371124479: ["25861707&d=611"],
-            371128932: ["54074045&d=549"],
-            371147655: ["26016140&d=1499"],
-            371127806: ["26077042&d=404"],
-            371134263: ["54074051&d=676"],
-            371134463: ["54074096&d=536"],
-            371152870: ["26118958&d=1542"],
-            371150331: ["26221887&d=641"],
-            371145493: ["61561534&d=550"],
-            371149153: ["61561541&d=566"],
-            371159808: ["32367466&d=893", "32438163&d=893"],
-            371155867: ["32438164&d=443"],
-            371158970: ["61737734&d=666"],
-            371158937: ["61737739&d=586"],
-            371220206: ["32884777&d=1082", "32945997&d=1082"],
-            371211550: ["32946010&d=500"],
-            371214315: ["63041780&d=649"],
-            371215794: ["63041782&d=702"],
-            371223038: ["33506812&d=1109"],
-            371220679: ["33771601&d=567"],
-            371218747: ["63404024&d=544"],
-            371229233: ["63404026&d=682"],
-            371231532: ["34541799&d=890"],
-            371228166: ["34708551&d=435"],
-            371850821: ["35140084&d=951"],
-            371848352: ["35290715&d=469"],
-            371849747: ["35882768&d=793"],
-            371850784: ["35882779&d=579"],
-            371852442: ["39240438&d=843"],
-            371852567: ["39259553&d=447"],
-            371854558: ["39491237&d=899"],
-            371854810: ["39433610&d=711"],
-            371856197: ["40348013&d=831"],
-            371856386: ["40348014&d=633"],
-            371856234: ["45398417&d=723"],
-            371857913: ["45398437&d=583"],
-            371858638: ["47374375&d=785"],
-            371857975: ["47374374&d=627"],
-            371859725: ["48594522&d=706"],
-            371859983: ["48620698&d=509"],
-            372206540: ["55634358&d=772"],
-            372202826: ["55634443&d=574"],
-            372206010: ["57692507&d=831"],
-            372208157: ["57692513&d=457"],
-            372216925: ["57692543&d=759"],
-            372219002: ["57692984&d=665"],
-            372231339: ["68998472&d=851"],
-            372226933: ["70299478&d=678"],
-            372231912: ["73078883&d=809", "70299566&d=809"],
-            372236711: ["70439113&d=637"],
-            372246629: ["72144496&d=989"],
-            372236935: ["72144432&d=501"],
-            365826526: ["29354000&d=1329"],
-            365874743: ["29830931&d=1413"],
-            365905613: ["30177034&d=1635"],
-            365905866: ["30477864&d=1495"],
-            365922956: ["21164623&d=1549"],
-            365923087: ["21521108&d=1792"],
-            365970157: ["26805876&d=1664"],
-            365970185: ["27132910&d=1842"],
-            365970624: ["28058290&d=1566"],
-            365971372: ["28279043&d=1556"],
-            365971455: ["30177035&d=1597"],
-            365972579: ["29354002&d=1382"],
-            365974390: ["31526576&d=1863"],
-            365975942: ["31899421&d=1910", "32056801&d=1910"],
-            365976886: ["33129023&d=1397"],
-            365977602: ["33688747&d=1321"],
-            365977530: ["36384945&d=1274"],
-            365977656: ["37835997&d=1552", "39706653&d=1203"],
-            365977752: ["39082391&d=1354"],
-            365978079: ["39706653&d=1203"],
-            365978042: ["39503183&d=1116"],
-            365978205: ["40681155&d=1216"],
-            366003498: ["21754879&d=901", "37835983&d=901"],
-            366003854: ["21940048&d=838"],
-            366003485: ["22114651&d=1049"],
-            366003823: ["22652858&d=1128"],
-            366005058: ["26413969&d=1034"],
-            366005344: ["26550587&d=1118"],
-            366006484: ["28767635&d=1440"],
-            366005196: ["30009321&d=900"],
-            366004140: ["31014571&d=703"],
-            366005397: ["34211222&d=955"],
-            366005387: ["35824728&d=914"],
-            377203240: ["41753456&d=1578"],
-            377208240: ["41072029&d=1560"],
-            377205167: ["44284335&d=1191"],
-            377205223: ["45315070&d=1345"],
-            377214861: ["48407277&d=1502"],
-            377209007: ["48407274&d=1382"],
-            377217627: ["50365593&d=1870"],
-            377219529: ["50624685&d=1591"],
-            377220481: ["55080304&d=1765", "55634356&d=1765"],
-            377222845: ["55878860&d=1749"],
-            377222748: ["60041183&d=1499"],
-            377228103: ["60918450&d=1547"],
-            377228600: ["65820249&d=1726"],
-            377229345: ["65913134&d=1830"],
-            377228565: ["75292330&d=1684"],
-            377232080: ["76192562&d=1937"],
-            377235605: ["76581343&d=1768"],
-            377233494: ["77924074&d=1569"],
-            377237306: ["78438967&d=2384"],
-            377239175: ["78629728&d=2760"],
-            377239025: ["82777548&d=2102"],
-            377238484: ["83551905&d=2068"],
-            377238454: ["87692283&d=1110"],
-            377241759: ["93091931&d=1957"],
-            377241755: ["94127748&d=1648"],
-            377242089: ["96304642&d=1805"],
-            377242387: ["97916200&d=2301"],
-            377780106: ["78438897&d=1050"],
-            377789885: ["79262072&d=1002"],
-            377777511: ["84288918&d=1063"],
-            377781780: ["95613038&d=1240"],
-            377780230: ["37971672&d=826"],
-            377799128: ["42460350&d=833"],
-            377798674: ["45561413&d=739"],
-            377799009: ["53343872&d=855"],
-            377795396: ["56738474&d=1138"],
-            377799342: ["57692612&d=891"],
-            377797596: ["62806333&d=995"],
-            377782761: ["73082924&d=1148"]
-        }
-
-        function applyMeanOffset(ldanmu, currentDuration, expectedDuration) {
-            let rate = expectedDuration / currentDuration
-            for (let idanmu = 0; idanmu < ldanmu.length; idanmu++) {
-                ldanmu[idanmu].progress = Math.floor(ldanmu[idanmu].progress * rate)
+    async function mergeDescDanmaku(callback, segmentIndex, aid, cid, ipage, duration, ndanmu, existDanmuNum, extraInfo) {
+        let ldanmu, info, url
+        if (bindAid && bindAid.indexOf(aid.toString()) !== -1) {
+            url = danmuServerDomain + '/protobuf/custom?'
+        } else {
+            let hasExtra = false
+            url = danmuServerDomain + '/protobuf/desc?'
+            if (extraInfo.hasOwnProperty('niconico')) {
+                hasExtra = true
+                url += '&nicoid=' + extraInfo.niconico
             }
-            return ldanmu
-        }
-
-        async function yuyuyuBackup() {
-            if (yuyuyu.hasOwnProperty(cid.toString())) {
-                for (let ocid of yuyuyu[cid.toString()]) {
-                    let [cid, oDuration] = ocid.split('&d=')
-                    oDuration = parseInt(oDuration)
-                    let tldanmu = (await moreFiltedHistory(cid, 0))[0]
-                    if (oDuration !== duration) {
-                        tldanmu = applyMeanOffset(tldanmu, oDuration, duration)
-                    }
-                    ldanmu.push({cid: cid, ldanmu: tldanmu})
-                    if (callback) callback({cid: cid, ldanmu: tldanmu})
-
-                }
+            if (extraInfo.hasOwnProperty('mid') && bindAid && bindAid.indexOf('mid_' + extraInfo.mid) !== -1) {
+                hasExtra = true
+                url += '&mid=' + extraInfo.mid
+                // let result = JSON.parse(await xhrGet(danmuServerDomain + '/bindUserDanmaku?mid='
+                //     + extraInfo.mid + '&duration=' + duration + '&pubdate=' + extraInfo.pubdate))
+                // if (/^sm\d+$/.exec(result[0].id)) {
+                //     let tldanmu = await nicoDanmu(result[0].id, 0, ndanmu)
+                //     applyOffset(tldanmu, [{progress: 0, offset_seconds: duration - result[0].duration}])
+                //     ldanmu.push({cid: result[0].id, ldanmu: tldanmu})
+                //     if (callback) callback({cid: result[0].id, ldanmu: tldanmu})
+                // }
+            }
+            if (extraInfo.twitch) {
+                hasExtra = true
+                url += '&twitch_id=' + extraInfo.twitch
+            }
+            if (extraInfo.youtube) {
+                url += '&youtube_id=' + extraInfo.youtube
+            }
+            if (!hasExtra) {
+                return [[], {}]
             }
         }
-
-        return async function mergeDescDanmaku(callback, segmentIndex, aid, cid, ipage, duration, ndanmu, existDanmuNum, extraInfo) {
-            let ldanmu, info, url
-            if (bindAid && bindAid.indexOf(aid.toString()) !== -1) {
-                url = danmuServerDomain + '/protobuf/custom?'
-            } else {
-                let hasExtra = false
-                url = danmuServerDomain + '/protobuf/desc?'
-                if (extraInfo.hasOwnProperty('niconico')) {
-                    hasExtra = true
-                    url += '&nicoid=' + extraInfo.niconico
-                }
-                if (extraInfo.hasOwnProperty('mid') && bindAid && bindAid.indexOf('mid_' + extraInfo.mid) !== -1) {
-                    hasExtra = true
-                    url += '&mid=' + extraInfo.mid
-                    // let result = JSON.parse(await xhrGet(danmuServerDomain + '/bindUserDanmaku?mid='
-                    //     + extraInfo.mid + '&duration=' + duration + '&pubdate=' + extraInfo.pubdate))
-                    // if (/^sm\d+$/.exec(result[0].id)) {
-                    //     let tldanmu = await nicoDanmu(result[0].id, 0, ndanmu)
-                    //     applyOffset(tldanmu, [{progress: 0, offset_seconds: duration - result[0].duration}])
-                    //     ldanmu.push({cid: result[0].id, ldanmu: tldanmu})
-                    //     if (callback) callback({cid: result[0].id, ldanmu: tldanmu})
-                    // }
-                }
-                if (extraInfo.twitch) {
-                    hasExtra = true
-                    url += '&twitch_id=' + extraInfo.twitch
-                }
-                if (extraInfo.youtube) {
-                    url += '&youtube_id=' + extraInfo.youtube
-                }
-                if (!hasExtra) {
-                    return [[], {}]
-                }
-            }
-            url = url + '&index=' + ipage + '&duration=' + duration + '&from_ex=1' + '&segmentIndex=' + segmentIndex + '&aid=' + aid + '&cid=' + cid;
-            if (extensionSetting.translateNicoComment) {
-                url += '&translate=1'
-            }
-            if (extensionSetting.translateThreshold) {
-                url += '&translateThreshold=' + extensionSetting.translateThreshold
-            }
-            [ldanmu, info] = await loadServerProtobuf(url)
-            let sourceDict = splitServerDanmaku(ldanmu, info)
-            ldanmu = await filterServerDanmaku(sourceDict)
-            if (callback) {
-                if (info && info.source && info.source.y) {
-                    callback(null, null, {'type': 'replaceLoadPage', youtube: info.source.y, cid: cid})
-                }
-                if (sourceDict.n && sourceDict.n.elems.commentArts && sourceDict.n.elems.commentArts.length > 0) {
-                    console.log("commentArtFound")
-                    callback(null, null, {'type': 'load_comment_art', ldanmu: sourceDict.n.elems.commentArts})
-                }
-                callback(ldanmu, null, null, segmentIndex)
-            }
-            return [ldanmu, info]
+        url = url + '&index=' + ipage + '&duration=' + duration + '&from_ex=1' + '&segmentIndex=' + segmentIndex + '&aid=' + aid + '&cid=' + cid;
+        if (extensionSetting.translateNicoComment) {
+            url += '&translate=1'
         }
-    }();
+        if (extensionSetting.translateThreshold) {
+            url += '&translateThreshold=' + extensionSetting.translateThreshold
+        }
+        [ldanmu, info] = await loadServerProtobuf(url)
+        let sourceDict = splitServerDanmaku(ldanmu, info)
+        ldanmu = await filterServerDanmaku(sourceDict)
+        if (callback) {
+            if (info && info.source && info.source.y) {
+                callback(null, null, {'type': 'replaceLoadPage', youtube: info.source.y, cid: cid})
+            }
+            if (sourceDict.n && sourceDict.n.elems.commentArts && sourceDict.n.elems.commentArts.length > 0) {
+                console.log("commentArtFound")
+                callback(null, null, {'type': 'load_comment_art', ldanmu: sourceDict.n.elems.commentArts})
+            }
+            callback(ldanmu, null, null, segmentIndex)
+        }
+        return [ldanmu, info]
+    }
     window.downloadDanmaku = function () {
         function genxml(ldanmu, ndanmu, cid) {
             let head = '<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><chatid>' + cid.toString() + '</chatid><mission>0</mission><maxlimit>' + ndanmu.toString() + '</maxlimit><state>0</state><real_name>0</real_name><source>DF</source>';
