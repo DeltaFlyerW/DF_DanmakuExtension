@@ -2287,7 +2287,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 }
             }
             if (true || expectedDanmuNum === -1 || result[2] === 0 || (result[2] < expectedDanmuNum && result[2] > Math.min(ndanmu, 5000))) {
-                mergeDanmu(ldanmu, await allProtobufDanmu(cid, duration))
+                mergeDanmu(aldanmu, await allProtobufDanmu(cid, duration))
             }
             return result
         }
@@ -2548,6 +2548,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         }
         return [ldanmu, info]
     }
+
     window.downloadDanmaku = function () {
         function genxml(ldanmu, ndanmu, cid) {
             let head = '<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><chatid>' + cid.toString() + '</chatid><mission>0</mission><maxlimit>' + ndanmu.toString() + '</maxlimit><state>0</state><real_name>0</real_name><source>DF</source>';
@@ -2602,26 +2603,29 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             if (!danmuServerDomain) {
                 await testServer()
             }
-            let ldanmu
+            let ldanmu, fileName, sdanmu
             if (cid.name) {
-                let zip = new JSZip();
-                let folder = zip.folder(cid.name)
-
-
-                for (let sn of cid.lsn) {
-                    let sdanmu = await window.downloadDanmaku(sn.sn, ndanmu, true)
-                    folder.file(sn.name + ' ' + sdanmu.name, sdanmu.sdanmu)
-                    await new Promise((resolve) => setTimeout(resolve, 500));
-                }
-                zip.generateAsync({
-                    type: "blob", compression: "DEFLATE", compressionOptions: {
-                        level: 9
+                if (cid.lsn) {
+                    let zip = new JSZip();
+                    let folder = zip.folder(cid.name)
+                    for (let sn of cid.lsn) {
+                        let sdanmu = await window.downloadDanmaku(sn.sn, ndanmu, true)
+                        folder.file(sn.name + ' ' + sdanmu.name, sdanmu.sdanmu)
+                        await new Promise((resolve) => setTimeout(resolve, 500));
                     }
-                })
-                    .then(function (content) {
-                        downloadFile(cid.name + ".zip", content);
-                    });
-                return
+                    zip.generateAsync({
+                        type: "blob", compression: "DEFLATE", compressionOptions: {
+                            level: 9
+                        }
+                    })
+                        .then(function (content) {
+                            downloadFile(cid.name + ".zip", content);
+                        });
+                    return
+                } else if (cid.cid) {
+                    fileName = cid.name
+                    sdanmu = (await window.downloadDanmaku(cid.cid, 12000, true)).sdanmu
+                }
             } else if (cid.startsWith('ss')) {
                 let ssid = cid
                 let zip = new JSZip();
@@ -2681,10 +2685,16 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 ldanmu = (await moreFiltedHistory(cid))[0]
                 cid = 'cid' + cid
             }
+            if (!fileName) {
+                fileName = cid
+            }
+            if (!sdanmu && ldanmu) {
+                sdanmu = genxml(danmuObject2XML(ldanmu), 0, 0)
+            }
             if (!ret) {
-                return downloadFile(cid + '.xml', genxml(danmuObject2XML(ldanmu), 0, 0))
+                return downloadFile(fileName + '.xml', sdanmu)
             } else {
-                return {name: cid + '.xml', sdanmu: genxml(danmuObject2XML(ldanmu), 0, 0)}
+                return {name: fileName + '.xml', sdanmu: sdanmu}
             }
 
         }

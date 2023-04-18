@@ -47,10 +47,12 @@ async function main() {
         let a = document.createElement('a')
         a.setAttribute('class', 'ani-tabs-link')
         a.text = '下载弹幕'
+        let title = document.querySelector("head > title").text
+        title = title.slice(0, title.indexOf(" 線上看"))
         tab.appendChild(a)
         tab.addEventListener('click', function () {
             console.log('download', {cid: 'sn' + sn})
-            postExtension('biliplusDownloadDanmaku', {cid: 'sn' + sn})
+            postExtension('bahamuteDownloadDanmaku', {cid: 'sn' + sn, name: title})
         })
         elem.appendChild(tab)
     }

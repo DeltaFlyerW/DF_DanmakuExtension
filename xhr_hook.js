@@ -2,11 +2,11 @@
     'use strict'
     if (XMLHttpRequest.prototype.pakku_open) return;
 
-    let console={};
+    let console = {};
     (() => {
         Object.keys(window.console).forEach(functionName => {
             if (typeof window.console[functionName] == "function") {
-                console[functionName]=window.console[functionName]
+                console[functionName] = window.console[functionName]
             }
         })
         console.log('disable sentry')
@@ -20,7 +20,7 @@
     window.addEventListener("message", function (event) {
         if (event.source !== window || !event.data || !event.data.type) return;
         switch (event.data.type) {
-            case 'replaceLoadPage': {
+            case "replaceLoadPage": {
                 console.log('replaceLoadPage')
                 let loadPage = buildLoadPage(event.data.youtube)
                 if (!loadPage) return;
@@ -43,7 +43,7 @@
                 delete callbacks[event.data.arg]
                 break
             }
-            case"load_danmaku": {
+            case "load_danmaku": {
                 window.top.closure.loadDanmu(event.data.ldanmu)
                 break
             }
@@ -54,7 +54,7 @@
         }
     }, false);
 
-    async function postExtension(messageType, data, hasCallback = true) {
+    async function postExtension(messageType, data = null, hasCallback = true) {
         let timeStamp = new Date().getTime();
         if (!data) data = {}
         data.type = messageType
@@ -1433,6 +1433,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     },
                     "replies": null,
                     "assist": 0,
+                    "dynamic_id_str": "0",
                     "up_action": {"like": false, "reply": false},
                     "invisible": false,
                     "reply_control": {"time_desc": ""},
@@ -1464,7 +1465,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     response.data.replies.push(reply)
                 }
                 response.data.cursor.is_end = isEnd
-                return JSON.stringify(response)
+                return {data: JSON.stringify(response)}
             }
 
             function buildSublist(commentList, pageInfo) {
@@ -1563,7 +1564,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     reply.like = comment.votes
                     response.data.replies.push(reply)
                 }
-                return JSON.stringify(response)
+                return {data: JSON.stringify(response)}
             }
 
             let createMutationObserver = function () {
