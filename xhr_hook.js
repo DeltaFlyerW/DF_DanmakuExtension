@@ -22,20 +22,7 @@
         switch (event.data.type) {
             case "replaceLoadPage": {
                 console.log('replaceLoadPage')
-                let loadPage = buildLoadPage(event.data.youtube)
-                if (!loadPage) return;
-                if (window.bbComment.prototype.originLoadPage) {
-                    return;
-                }
-                eval('window.bbComment.prototype.originLoadPage=' + window.bbComment.prototype.loadPage.toString())
-                if (!window.loadPage) {
-                    window.loadPage = buildLoadPage(event.data.youtube)
-                }
-                window.bbComment.prototype.loadPage = function (i, e) {
-                    if (!window.loadPage || window.loadPage(i, e)) {
-                        this.originLoadPage(i, e)
-                    }
-                }
+                buildLoadPage(event.data.youtube)
                 break
             }
             case "pakku_ajax_response": {
@@ -200,6 +187,7 @@
                     if (cid !== currentCid) {
                         currentCid = cid
                         console.log('cid changed,clear')
+                        clearNicoComment()
                         loadedSegmentList = []
                     }
                     if (this.pakku_load_callback || this.onreadystatechange !== null) {
@@ -547,10 +535,6 @@
 
     async function parse(url, json = false) {
         let res = await postExtension('parse', {url: url})
-        while (!res) {
-            await sleep(2)
-            res = await postExtension('parse', {url: url})
-        }
         if (json) {
             return JSON.parse(res)
         } else {
@@ -878,7 +862,6 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 let submit = popup.querySelector('input[id="dfex-bind-submit"]')
                 let result = popup.center.querySelector('div[id="dfex-bind-result"]')
                 let error = popup.center.querySelector('p[id="dfex-bind-error"]')
-                let youtubeChat = popup.querySelector('input[id="dfex-bind-youtube-chat"]')
                 confirm.addEventListener('click', async function () {
                     error.textContent = ''
                     let bindResult = await postExtension('parseBindInfo', {content: input.value})
@@ -906,10 +889,13 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         buildLoadPage(bindDict.youtube)
                     }
                 })
-                youtubeChat.addEventListener("click", async function () {
-                    input.value = "https://www.youtube.com/watch?v=" + lastDesc[3].youtube + "&live=1"
-                    confirm.click()
-                })
+                let youtubeChat = popup.querySelector('input[id="dfex-bind-youtube-chat"]')
+                if (youtubeChat) {
+                    youtubeChat.addEventListener("click", async function () {
+                        input.value = "https://www.youtube.com/watch?v=" + lastDesc[3].youtube + "&live=1"
+                        confirm.click()
+                    })
+                }
             }
 
             button.addEventListener('click', handle)
@@ -917,7 +903,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
         })();
     }
 
-    let loadNicoCommentArt = (function loadNicoCommentArt() {
+    let [loadNicoCommentArt, clearNicoComment] = (function loadNicoCommentArt() {
         function buildCanvas() {
             // Get a reference to the existing element in the document
             let existingElement = document.querySelector('video');
@@ -943,34 +929,49 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
 </div>
 `
             existingElement.parentElement.insertAdjacentHTML('beforeend', html);
-            let result = existingElement.parentElement.querySelector("#nico-canvas")
-            return result
+            return existingElement.parentElement.querySelector("#nico-canvas")
         }
 
         async function initScript() {
+            if (scriptInited) {
+                return
+            } else {
+                scriptInited = true
+            }
             let result = await parse("extension::plugin/niconicomments.min.js")
             let script = document.createElement('script');
             script.textContent = result
             document.body.appendChild(script)
         }
 
-        let niconiComments = null
+        let scriptInited = false
+        let niconiComments
+        let canvasElem
+        let interval
 
-        return async function (comments) {
+        return [async function (comments) {
             if (!niconiComments) {
-                let canvasElem = buildCanvas()
+                canvasElem = buildCanvas()
                 console.log('buildNicoCanvas', canvasElem)
                 await initScript()
                 niconiComments = new NiconiComments(canvasElem, [], {
-                    mode: 'default', keepCA: true
+                    mode: 'default'
                 });
-                setInterval(() => {
+                interval = setInterval(() => {
                     niconiComments.drawCanvas(Math.floor(window.player.getCurrentTime() * 100))
                 }, 10);
             }
             niconiComments.addComments(...comments)
             console.log('addCommentArt', niconiComments, comments)
-        };
+        }, function () {
+            if (canvasElem) {
+                canvasElem.parentElement.removeChild(canvasElem)
+                clearInterval(interval)
+                niconiComments = undefined
+                interval = undefined
+                canvasElem = undefined
+            }
+        }];
     })();
 
     let youtubeManager = {
@@ -1165,13 +1166,11 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                 youtubeManager.youtubeId = youtubeId
                 renderYoutubeButton()
             }
-            return function (i, e) {
-
+            let loadPage = function (i, e) {
                 if (!document.querySelector('li[class="youtube-comment on"]')) {
                     youtubeManager.showed = false
                     return true
                 }
-                let o = this;
 
                 if (youtubeManager.showed !== true) {
                     let commentList = document.querySelector("#comment > div > div.comment > div > div.comment-list")
@@ -1183,11 +1182,10 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     }
                     youtubeManager.showed = true
                 } else {
-                    if (o.loading) return;
+                    if (this.loading) return;
                 }
 
-                ``
-                o.loading = !0
+                this.loading = !0
                 let loadingState = document.querySelector("#comment > div > div.comment > div > div.loading-state")
                 loadingState.innerHTML = '正在加载中...'
 
@@ -1197,11 +1195,22 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     })
                     .catch(function (e) {
                         console.log(e)
-                        o.loaded || o._showLoading('<span>加载失败，<a class="reload-comment">点击重试</a></span>')
+                        this.loaded || this._showLoading('<span>加载失败，<a class="reload-comment">点击重试</a></span>')
                     })
                     .finally(function () {
-                        o.loading = !1
+                        this.loading = !1
                     })
+            }
+            window.bbComment.prototype.originLoadPage = window.bbComment.prototype.loadPage
+            if (!window.loadPage) {
+                window.loadPage = loadPage
+            }
+            window.bbComment.prototype.loadPage = function (i, e) {
+                if (!window.loadPage) {
+                    this.originLoadPage(i, e)
+                } else {
+                    window.loadPage(i, e)
+                }
             }
         }
 
@@ -1312,7 +1321,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         }
                         youtubeManager.commentList.push(comment)
                     }
-                    return buildMainContent(ret[0])
+                    return buildMainContent(ret[0], ret[1] === null)
                 } else if (url.indexOf("reply?csrf") !== -1) {
                     let page = Number(/pn=(\d+)/.exec(url)[1])
                     let pageSize = Number(/ps=(\d+)/.exec(url)[1])
@@ -1346,6 +1355,9 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             "is_end": true,
                             "all_count": 0,
                             "mode": 2,
+                            'pagination_reply':{
+                                "next_offset":"{\"type\":2,\"direction\":1,\"Data\":{\"cursor\":1}}"
+                            },
                             "support_mode": [2, 3],
                             "name": "最新评论"
                         },
@@ -1358,7 +1370,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                         "blacklist": 0,
                         "vote": 0,
                         "config": {"showtopic": 1, "show_up_flag": true, "read_only": false},
-                        "upper": {"mid": 23436313},
+                        "upper": {"mid": 2},
                         "control": {
                             "input_disable": false,
                             "root_input_text": "发一条友善的评论",

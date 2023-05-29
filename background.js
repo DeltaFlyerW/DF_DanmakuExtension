@@ -338,7 +338,7 @@ let parseNicoServerResponse = function () {
             'black2': 6710886
         }
         let caCommands = ['full', 'patissier', 'ender', 'mincho', 'gothic', 'migi', 'hidari']
-        let caCharRegex = new RegExp(` ◥█◤■◯△×\u05C1\u0E3A\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u200C\u200D\u200E\u200F\u3000\u3164\u2580\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588\u2589\u258A\u258B\u258C\u258D\u258E\u258F\u2590\u2591\u2592\u2593\u2594\u2595\u2596\u2597\u2598\u2599\u259A\u259B\u259C\u259D\u259E\u259F\u25E2\u25E3\u25E4\u25E5`.split('').join('|'))
+        let caCharRegex = new RegExp(' ◥█◤■◯△×\u05C1\u0E3A\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u200C\u200D\u200E\u200F\u3000\u3164\u2580\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588\u2589\u258A\u258B\u258C\u258D\u258E\u258F\u2590\u2591\u2592\u2593\u2594\u2595\u2596\u2597\u2598\u2599\u259A\u259B\u259C\u259D\u259E\u259F\u25E2\u25E3\u25E4\u25E5'.split('').join('|'))
         let commentArts = []
 
         for (let i = 0; i < lres.length; i++) {
@@ -737,7 +737,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
     }]
 
     let danmuFilter = window.danmuFilter = function () {
-        let workerNum = 8
+        let workerNum = 3
         let lfilterWorker = []
 
         return async function (ldanmu, filterRule = null) {
@@ -2416,9 +2416,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             setting = extensionSetting
         }
         let url = danmuServerDomain + '/protobuf/season?' + 'ss=' + ssid + '&index=' + ipage + '&duration=' + duration + '&from_ex=1' + '&segmentIndex=' + segmentIndex + '&aid=' + aid + '&cid=' + cid
-        if (setting.nicoDanmuRate) {
-            url += '&nico_danmaku_limit=' + Math.floor(ndanmu * setting.nicoDanmuRate)
-        }
+        url += '&nico_danmaku_limit=' + Math.floor(ndanmu * setting.nicoDanmuRate)
         if (setting.animadRate !== undefined && setting.animadRate !== -1) {
             url += '&baha_danmaku_limit=' + Math.floor(ndanmu * setting.animadRate)
         }
@@ -2428,9 +2426,9 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
         if (setting.translateThreshold) {
             url += '&translateThreshold=' + setting.translateThreshold
         }
-        if (!setting.ignoreBili) {
-            url += '&alias_comment=1'
-        }
+        // if (!setting.ignoreBili) {
+        //     url += '&alias_comment=1'
+        // }
         return url
     }
 
@@ -2759,9 +2757,9 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             if (!existedDldanmu) {
                 ldldanmu.push({
                     timestamp: new Date().getTime(),
-                    "aid": aid,
-                    'cid': cid,
-                    'ndanmu': null,
+                    aid: aid,
+                    cid: cid,
+                    ndanmu: null,
                     segmentDict: {},
                     loadedBiliSegmentList: [],
                     aldanmu: []
@@ -2771,7 +2769,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             ldanmu = []
             let duration = extraInfo.duration
             let loadBili = null
-            if (!ssid || !extensionSetting.ignoreBili) {
+            if (!extensionSetting.ignoreBili) {
                 if (segmentIndex !== -1) {
                     loadBili = loadProtoDanmu(`https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid=${cid}&segment_index=${segmentIndex}`, null, null, 0, true).then(e => {
                         ldanmu = ldanmu.concat(e)
@@ -2779,6 +2777,8 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 } else {
                     ldanmu = ldanmu.concat(moreFiltedHistory(cid, duration))
                 }
+            } else {
+                console.log('ignoreBili')
             }
             ndanmu = duration2poolSize(duration)
 
@@ -3221,7 +3221,6 @@ async function xhrPost(option) {
         console.log('XhrError=', e)
         throw (e)
     }
-
 }
 
 let adjustOffset = (function () {

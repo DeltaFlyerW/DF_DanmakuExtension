@@ -93,7 +93,7 @@
         }
 
         for (let prefix of Object.keys(prefixDict)) {
-            let match = RegExp('([^a-zA-Z]|^)(' + prefix + '\d+)([^a-zA-Z]|$)').exec(content)
+            let match = RegExp('([^a-zA-Z0-9]|^)(' + prefix + '\\d+)([^a-zA-Z]|$)').exec(content)
             if (match) {
                 let matchResult = match[2]
                 let result = {}
@@ -482,10 +482,10 @@
 
     let script = document.createElement("script");
     //为了在页面元素的script执行前覆盖,使用同步逻辑
-        const xhr = new XMLHttpRequest();
+    const xhr = new XMLHttpRequest();
     xhr.open("get", chrome.runtime.getURL("xhr_hook.js"), false);
-        xhr.send()
-        script.textContent = xhr.responseText
+    xhr.send()
+    script.textContent = xhr.responseText
     document.documentElement.insertBefore(script, document.documentElement.firstChild);
 
 })();

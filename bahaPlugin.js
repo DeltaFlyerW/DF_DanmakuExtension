@@ -39,7 +39,6 @@ async function main() {
     }
     let elem = document.querySelector("#BH_background > div.container-player > section.player > div.subtitle > div.sub_top.ani-tabs")
     if (elem) {
-
         let sn = /sn=(\d+)/.exec(location.href)[1]
 
         let tab = document.createElement('div')
@@ -48,9 +47,10 @@ async function main() {
         a.setAttribute('class', 'ani-tabs-link')
         a.text = '下载弹幕'
         let title = document.querySelector("head > title").text
-        title = title.slice(0, title.indexOf(" 線上看"))
+        title = 'sn' + sn + ' ' + title.slice(0, title.indexOf(" 線上看"))
         tab.appendChild(a)
         tab.addEventListener('click', function () {
+            tab.style.visibility = 'none'
             console.log('download', {cid: 'sn' + sn})
             postExtension('bahamuteDownloadDanmaku', {cid: 'sn' + sn, name: title})
         })
@@ -76,12 +76,12 @@ async function main() {
                 })
             }
         } else {
-            let lseasonTitle = season.querySelectorAll('p')
-            let lseason = season.querySelectorAll('ul')
-            for (let i = 0; i < lseason.length; i++) {
-                for (let a of lseason[i].querySelectorAll('a')) {
+            let lSeasonTitle = season.querySelectorAll('p')
+            let lSeason = season.querySelectorAll('ul')
+            for (let i = 0; i < lSeason.length; i++) {
+                for (let a of lSeason[i].querySelectorAll('a')) {
                     lsn.push({
-                        'name': lseasonTitle[i].innerText + ' ' + a.text,
+                        'name': lSeasonTitle[i].innerText + ' ' + a.text,
                         'sn': 'sn' + /sn=(\d+)/.exec(a.href)[1]
                     })
                 }
@@ -97,6 +97,7 @@ async function main() {
         li.appendChild(a)
 
         li.addEventListener('click', function () {
+            li.style.visibility = 'none'
             console.log('download', {name: title + ' ' + getdate(new Date()), lsn: lsn})
             postExtension('bahamuteDownloadDanmaku', {name: title + ' ' + getdate(new Date()), lsn: lsn})
             li.style.visibility = 'hidden'
