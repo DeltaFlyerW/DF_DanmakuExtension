@@ -1355,8 +1355,8 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             "is_end": true,
                             "all_count": 0,
                             "mode": 2,
-                            'pagination_reply':{
-                                "next_offset":"{\"type\":2,\"direction\":1,\"Data\":{\"cursor\":1}}"
+                            'pagination_reply': {
+                                "next_offset": "{\"type\":2,\"direction\":1,\"Data\":{\"cursor\":1}}"
                             },
                             "support_mode": [2, 3],
                             "name": "最新评论"
@@ -1477,6 +1477,9 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                     response.data.replies.push(reply)
                 }
                 response.data.cursor.is_end = isEnd
+                if (isEnd) {
+                    response.data.cursor.pagination_reply = null
+                }
                 return {data: JSON.stringify(response)}
             }
 
