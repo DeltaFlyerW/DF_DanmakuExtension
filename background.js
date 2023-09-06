@@ -2,7 +2,7 @@ let defaultConfig = {
     debug: false,
     danmuRate: -1,
     nicoDanmuRate: 1,
-    biliSegmentLimit: 2000,
+    biliSegmentLimit: -1,
     animadRate: -1,
     loadNicoComment: true,
     loadNicoScript: true,
@@ -2745,7 +2745,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 break
             }
         }
-
+        let duration = extraInfo.duration
         if (ldanmu === null) {
             if (ldldanmu.length > 10) {
                 ldldanmu.shift()
@@ -2763,7 +2763,6 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             }
 
             ldanmu = []
-            let duration = extraInfo.duration
             let loadBili = null
             if (!extensionSetting.ignoreBili) {
                 if (segmentIndex !== -1) {
@@ -2835,7 +2834,7 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
             if (extensionSetting.biliSegmentLimit) {
                 limit = extensionSetting.biliSegmentLimit
             } else if (extensionSetting.danmuRate !== -1) {
-                limit = extensionSetting.danmuRate * 900
+                limit = extensionSetting.danmuRate * duration / 1440 * 3000
             }
             ldanmu = ldanmu.slice(0, limit)
         }
