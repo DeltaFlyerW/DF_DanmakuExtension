@@ -197,7 +197,8 @@
                         return that.pakku_send(arg);
                     }
                 } else if (youtubeManager.loadComment && this.pakku_url.indexOf("x/v2/reply") !== -1) {
-                    youtubeManager.loadComment(this.pakku_url).then(callback).catch(() => {
+                    youtubeManager.loadComment(this.pakku_url).then(callback).catch((e) => {
+                        console.log(e, e.stack)
                         return this.pakku_send(arg)
                     })
                 } else {
@@ -208,8 +209,8 @@
                     }]
                     let url = this.pakku_url
                     for (let cache of cacheUrlList) {
-                        if (this.pakku_url.indexOf(cache.pattern) !== -1) {
-                            this.pakku_addEventListener('readystatechange', function (s) {
+                        if (url.indexOf(cache.pattern) !== -1) {
+                            this.addEventListener('readystatechange', function (s) {
                                 if (4 === s.target.readyState) {
                                     window.postMessage({
                                         type: 'cacheUrl', url: url, urlType: cache.type, data: s.target.response,
@@ -535,6 +536,7 @@
 
     async function parse(url, json = false) {
         let res = await postExtension('parse', {url: url})
+        console.log(res)
         if (json) {
             return JSON.parse(res)
         } else {
@@ -1050,10 +1052,8 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
 
             for (let i = 0; i < lkey.length; i++) {
                 let key = lkey[i]
-                result = result.replace(key, dict[key.slice(1, -1)])
+                result = result.replaceAll(key, dict[key.slice(1, -1)])
             }
-
-
             return result
         }
 
@@ -1244,6 +1244,7 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             if (!event.isTrusted) {
                                 return
                             }
+                            console.log(child.className,'click',event.isTrusted)
                             youtubeManager.init = true
                             youtubeManager.showed = false
                             youtubeListItem.style.color = "#9499a0"
@@ -1252,8 +1253,8 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             for (let child1 of commentTitle.children) {
                                 if (child1.className.indexOf("sort") !== -1 && child1.className !== event.target.className) {
                                     if (event.target.hiddenActive) {
-                                        child1.click()
-                                        event.target.click()
+                                        // child1.click()
+                                        // event.target.click()
                                         event.target.hiddenActive = false
                                     }
                                     child1.style.color = "#9499a0"
@@ -1583,6 +1584,16 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
             }
 
             let createMutationObserver = function () {
+                if (!window._open) {
+                    window._open = window.open
+                    window.open = function (url) {
+                        if (url === 'https://space.bilibili.com/0') {
+                        } else {
+                            window._open(url)
+                        }
+                    }
+                }
+
                 let targetNode = document.querySelector("[class='reply-list']")
 
                 // Options for the observer (which mutations to observe)
@@ -1596,6 +1607,14 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                             if (replyItem.className === "reply-item") {
                                 let rpid = replyItem.querySelector('[class="root-reply-avatar"]').getAttribute("data-root-reply-id")
                                 if (rpid < youtubeManager.commentList.length) {
+                                    replyItem.querySelector('.user-name').addEventListener('click', evt => {
+                                        evt.preventDefault()
+                                        window.open("https://www.youtube.com/channel/" + youtubeManager.commentList[rpid].channel)
+                                    })
+                                    replyItem.querySelector('.root-reply-avatar').addEventListener('click', evt => {
+                                        evt.preventDefault()
+                                        window.open("https://www.youtube.com/channel/" + youtubeManager.commentList[rpid].channel)
+                                    })
                                     replyItem.querySelector('[class="reply-time"]').textContent = youtubeManager.commentList[rpid].time
                                     replyItem.querySelector('[class$="user-info"]').removeChild(replyItem.querySelector('[class$="user-level"]'))
                                     replyItem.querySelector('[class$="reply-info"]').removeChild(replyItem.querySelector('[class$="reply-dislike"]'))
@@ -1605,6 +1624,14 @@ body.settings-panel-dock-right .settings-panel-popup .settings-panel-content .si
                                 let rpid = replyItem.parentElement.parentElement.parentElement.querySelector('[class="root-reply-avatar"]').getAttribute("data-root-reply-id")
                                 if (rpid < youtubeManager.commentList.length) {
                                     let subId = replyItem.querySelector('[class="sub-reply-avatar"]').getAttribute("data-root-reply-id")
+                                    replyItem.querySelector('.sub-user-name').addEventListener('click', evt => {
+                                        evt.preventDefault()
+                                        window.open("https://www.youtube.com/channel/" + youtubeManager.commentList[rpid].replyList[subId].channel)
+                                    })
+                                    replyItem.querySelector('.sub-reply-avatar').addEventListener('click', evt => {
+                                        evt.preventDefault()
+                                        window.open("https://www.youtube.com/channel/" + youtubeManager.commentList[rpid].replyList[subId].channel)
+                                    })
                                     replyItem.querySelector('[class="sub-reply-time"]').textContent = youtubeManager.commentList[rpid].replyList[subId].time
                                     replyItem.querySelector('[class$="sub-user-info"]').removeChild(replyItem.querySelector('[class$="sub-user-level"]'))
                                     replyItem.querySelector('[class$="sub-reply-info"]').removeChild(replyItem.querySelector('[class$="sub-reply-dislike"]'))

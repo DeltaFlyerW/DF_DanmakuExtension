@@ -1,7 +1,8 @@
 let defaultConfig = {
     debug: false,
-    danmuRate: 2.1,
+    danmuRate: -1,
     nicoDanmuRate: 1,
+    biliSegmentLimit: 2000,
     animadRate: -1,
     loadNicoComment: true,
     loadNicoScript: true,
@@ -384,24 +385,19 @@ let parseNicoServerResponse = function () {
                                 danmu.owner = true
                                 break
                             }
-                            case caCommands.includes(command): {
-                                isCommentArt = true
-                                break
-                            }
-                            case dColor.hasOwnProperty(command): {
-                                color = dColor[command]
-                                break
-                            }
-                            case command[0] === '#': {
-                                try {
-                                    color = parseInt(command.slice(1), 16)
-                                } catch (e) {
+                            default: {
+                                if (caCommands.includes(command)) {
+                                    isCommentArt = true
+                                } else if (dColor.hasOwnProperty(command)) {
+                                    color = dColor[command]
+                                } else if (command[0] === '#') {
+                                    try {
+                                        color = parseInt(command.slice(1), 16)
+                                    } catch (e) {
+                                    }
+                                } else if (command[0] === "@") {
+                                    isCommentArt = true
                                 }
-                                break
-                            }
-                            case command[0] === "@": {
-                                isCommentArt = true
-                                break
                             }
                         }
                     }
@@ -2830,6 +2826,19 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 await loadBili
             }
         }
+        if ((extensionSetting.biliSegmentLimit && ldanmu.length > extensionSetting.biliSegmentLimit)
+            || extensionSetting.danmuRate !== -1) {
+            ldanmu.sort(function (a, b) {
+                return a.ctime - b.ctime
+            })
+            let limit
+            if (extensionSetting.biliSegmentLimit) {
+                limit = extensionSetting.biliSegmentLimit
+            } else if (extensionSetting.danmuRate !== -1) {
+                limit = extensionSetting.danmuRate * 900
+            }
+            ldanmu = ldanmu.slice(0, limit)
+        }
 
         if (!extensionSetting.notReturnProtobuf) {
             currentDanmu = ldanmu
@@ -3248,12 +3257,12 @@ let adjustOffset = (function () {
     }
 
     function xmlunEscape(content) {
-        return content.replace('；', ';')
+        return content
             .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '&')
-            .replace(/&gt;/g, '&')
-            .replace(/&apos;/g, '&')
-            .replace(/&quot;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&apos;/g, "'")
+            .replace(/&quot;/g, '"')
     }
 
     async function parseVideoInfo(aid) {

@@ -1,4 +1,9 @@
 (function () {
+    if (window.location.href.indexOf('https://www.bilibili.com/video') === -1
+        && window.location.href.indexOf("https://www.bilibili.com/list/watchlater?bvid=") === -1
+     && window.location.href.indexOf("https://www.bilibili.com/bangumi/play") === -1) {
+        return
+    }
     'use strict'
 
     async function sleep(time) {
@@ -317,13 +322,6 @@
                             chrome.runtime.onMessage.removeListener(handle)
                             if (resp.data !== null && resp.ndanmu !== null) {
                                 console.log('GotDanmuFromDFex', resp.ndanmu)
-                                if (setting.debug) {
-                                    let danmuSwitch = document.querySelector('div[class="bilibili-player-video-danmaku-switch bui bui-switch"]')
-                                    console.log('danmuSwitch', danmuSwitch)
-                                    if (danmuSwitch) {
-                                        danmuSwitch.style.visibility = "hidden";
-                                    }
-                                }
                             }
                             let message = {
                                 type: "pakku_ajax_response", arg: event.data.arg, resp: resp
@@ -419,8 +417,7 @@
             }
         }
     }, false);
-    if (window.location.href.indexOf('https://www.bilibili.com/video') || window.location.href.indexOf("https://www.bilibili.com/list/watchlater?bvid=")) {
-    }
+
     {
         document.addEventListener("DOMNodeInserted", async (msg) => {
             if (typeof msg.target.className == 'string') {
