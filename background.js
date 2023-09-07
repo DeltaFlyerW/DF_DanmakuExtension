@@ -2831,10 +2831,14 @@ let [danmuHookResponse, actualSegmentResponse] = function () {
                 return a.ctime - b.ctime
             })
             let limit
-            if (extensionSetting.biliSegmentLimit) {
+            if (extensionSetting.biliSegmentLimit > 0) {
                 limit = extensionSetting.biliSegmentLimit
             } else if (extensionSetting.danmuRate !== -1) {
-                limit = extensionSetting.danmuRate * duration / 1440 * 3000
+                let segmentDuration = duration
+                if (segmentDuration > 600) {
+                    segmentDuration = 600
+                }
+                limit = extensionSetting.danmuRate * segmentDuration / 1440 * 3000
             }
             ldanmu = ldanmu.slice(0, limit)
         }
